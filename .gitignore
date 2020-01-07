@@ -1,0 +1,6 @@
+src/aiolo/*.c
+dist/
+build/
+*.egg-info
+.idea
+Pipfile*
