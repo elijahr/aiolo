@@ -1,7 +1,6 @@
 # cython: language_level=3
 
 import asyncio
-import time
 from typing import Union, Iterable
 
 
