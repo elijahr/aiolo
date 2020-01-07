@@ -1,6 +1,7 @@
 # cython: language_level=3
 
 import asyncio
+import time
 from typing import Union, Iterable
 
 
@@ -42,6 +43,10 @@ cdef class Server:
     def url(self):
         return lo.lo_server_thread_get_url(self._lo_server_thread)
 
+    @property
+    def port(self):
+        return lo.lo_server_thread_get_port(self._lo_server_thread)
+
     def start(self):
         if self.running:
             raise exceptions.StartError('Server already running, cannot start again')
@@ -81,8 +86,7 @@ cdef class Server:
 cdef void on_error(int num, const char *cmsg, const char *cpath) nogil:
     with gil:
         msg = (<bytes>cmsg).decode('utf8')
-        path = (<bytes>cpath).decode('utf8')
-        logs.logger.error("liblo server error %d in path %s: %s" % (num, path, msg))
+        logs.logger.error("liblo server error %s: %s" % (num, msg))
 
 
 cdef int router(const char *path, const char *lotypes, lo.lo_arg ** argv, int argc, lo.lo_message raw_msg, void *_route) nogil:

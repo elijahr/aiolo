@@ -46,8 +46,8 @@ class AIOLoTestCase(unittest.TestCase):
         ])
 
     async def _test_types(self):
-        server = Server(url='osc.udp://:60056')
-        client = Client(url='osc.udp://:60056')
+        server = Server(url='osc.udp://:10021')
+        client = Client(url='osc.udp://:%s' % server.port)
         sub = server.sub(
             '/foo',
             [
@@ -120,8 +120,8 @@ class AIOLoTestCase(unittest.TestCase):
         self.assertListEqual(self.sub2_items, [[1]])
 
     async def _test_duplicate_subs(self):
-        server = Server(url='osc.udp://:60056')
-        client = Client(url='osc.udp://:60056')
+        server = Server(url='osc.udp://:10020')
+        client = Client(url='osc.udp://:%s' % server.port)
         sub1 = server.sub('/foo', 'i')
         sub2 = server.sub('/foo', 'i')
         server.start()
@@ -130,7 +130,6 @@ class AIOLoTestCase(unittest.TestCase):
             self.create_task(self.sub(sub2, 1)),
         )
         client.pub('/foo', 'i', 1)
-        client.pub('/foo', 'i', 2)
         sub1_items, sub2_items = await tasks
         server.stop()
         self.sub1_items = sub1_items
