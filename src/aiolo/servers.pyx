@@ -3,11 +3,17 @@
 import asyncio
 from typing import Union, Iterable
 
-from . import exceptions
+
+# Importing cython.parallel ensures CPython's thread state is initialized properly
+# See https://bugs.python.org/issue20891 and https://github.com/python/cpython/pull/5425
+# and https://github.com/opensocdebug/osd-sw/issues/37
+cimport cython.parallel
+
 
 from cpython.ref cimport Py_INCREF, Py_DECREF
 
 
+from . import exceptions
 from . cimport lo
 from . import logs
 from . cimport routes
