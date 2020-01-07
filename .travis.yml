@@ -63,3 +63,4 @@ install:
 
 script:
   - pipenv run python test.py
+  - rm -Rf aiolo.egg-info .eggs  # cleanup for deploy
