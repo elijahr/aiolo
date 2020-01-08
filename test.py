@@ -183,7 +183,7 @@ class AIOLoTestCase(unittest.TestCase):
             task = asyncio.create_task(coro)
         else:
             task = self.loop.create_task(coro)
-        self.loop.call_later(3, task.cancel)
+        self.loop.call_later(10, task.cancel)
         return task
 
 
