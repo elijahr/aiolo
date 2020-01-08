@@ -1,8 +1,11 @@
 
+from .bundles import Bundle
 from .clients import Client
-from .midi import Midi
+from .messages import Message
+from .midis import Midi
+from .routes import Route
 from .servers import Server
-from .timetag import TimeTag
+from .timetags import TimeTag
 
 
-__all__ = ('Client', 'Midi', 'Server', 'TimeTag')
+__all__ = ('Bundle', 'Client', 'Message', 'Midi', 'Route', 'Server', 'TimeTag')

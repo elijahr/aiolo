@@ -3,9 +3,9 @@
 from . cimport lo
 
 cdef class Server:
-    cdef object routes
+    cdef dict routes
     cdef object running
-    cdef lo.lo_server_thread _lo_server_thread
+    cdef lo.lo_server_thread lo_server_thread
     cdef object loop
 
 

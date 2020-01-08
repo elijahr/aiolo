@@ -1,6 +1,8 @@
 # cython: language_level=3
+from typing import Iterable, Union
 
 from . cimport lo
+from . cimport timetags
 
 # 32 bit signed integer.
 cdef char LO_INT32
@@ -34,8 +36,12 @@ cdef char LO_NIL
 # Symbol representing the value Infinitum.
 cdef char LO_INFINITUM
 
-cdef bytes pytypes_to_lotypes(object types)
+cpdef bytes ensure_lotypes(types: Union[str, bytes, Iterable, None])
 
 cdef lo.lo_message pyargs_to_lomessage(object lotypes, object args)
 
 cdef object lomessage_to_pyargs(char * lotypes, lo.lo_arg ** argv, int argc)
+
+cdef int timestamp_from_lo_timetag(lo.lo_timetag lo_timetag)
+
+cdef int message_add_timetag(lo.lo_message lo_message, timetags.TimeTag timetag)

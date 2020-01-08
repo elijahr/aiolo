@@ -1,3 +1,4 @@
+import datetime
 import logging
 
 import faulthandler
@@ -16,7 +17,7 @@ import asyncio
 import sys
 import unittest
 
-from aiolo import Client, Midi, Server, TimeTag
+import aiolo
 from aiolo.logs import logger
 
 ch = logging.StreamHandler()
@@ -25,30 +26,40 @@ logger.addHandler(ch)
 logger.setLevel(logging.DEBUG)
 
 
+EPOCH = datetime.datetime.utcfromtimestamp(0)
+
+
 class AIOLoTestCase(unittest.TestCase):
     def setUp(self):
         self.maxDiff = 3600
         self.loop = asyncio.new_event_loop()
         asyncio.set_event_loop(self.loop)
+        self.results = []
 
     def tearDown(self) -> None:
         self.loop.close()
 
     def test_types(self):
         self.loop.run_until_complete(self._test_types())
-        self.assertListEqual(self.items, [
-            [1, '1', '1', b'1', b'\x01', b'1', 1000000000000000000, 1000000000000000000, (1, 3), (1, 3), 0.0, 0.0,
+        self.assertListEqual(self.results, [
+            [1, '1', '1', b'1', b'\x01', b'1', 1000000000000000000, 1000000000000000000,
+             aiolo.TimeTag(1), aiolo.TimeTag(1), aiolo.TimeTag(1), aiolo.TimeTag(1.1),
+             0.0, 0.0,
              (1, 2, 3, 4), (1, 2, 3, 4), True, True, False, False, None, None, float('inf'), float('inf')],
-            [2, '2', '2', b'2', b'\x02', b'2', 2000000000000000000, 2000000000000000000, (2, 6), (2, 6), 0.0, 0.0,
+            [2, '2', '2', b'2', b'\x02', b'2', 2000000000000000000, 2000000000000000000,
+             aiolo.TimeTag(2), aiolo.TimeTag(2), aiolo.TimeTag(2), aiolo.TimeTag(2.1),
+             0.0, 0.0,
              (2, 4, 6, 8), (2, 4, 6, 8), True, True, False, False, None, None, float('inf'), float('inf')],
-            [3, '3', '3', b'3', b'\x03', b'3', 3000000000000000000, 3000000000000000000, (3, 9), (3, 9), 0.0, 0.0,
+            [3, '3', '3', b'3', b'\x03', b'3', 3000000000000000000, 3000000000000000000,
+             aiolo.TimeTag(3), aiolo.TimeTag(3), aiolo.TimeTag(3), aiolo.TimeTag(3.1),
+             0.0, 0.0,
              (3, 6, 9, 12), (3, 6, 9, 12), True, True, False, False, None, None, float('inf'), float('inf')]
         ])
 
     async def _test_types(self):
-        server = Server(url='osc.udp://:10021')
-        client = Client(url='osc.udp://:%s' % server.port)
-        sub = server.sub(
+        server = aiolo.Server(url='osc.udp://:10000')
+        client = aiolo.Client(url='osc.udp://:%s' % server.port)
+        route = server.route(
             '/foo',
             [
                 'i',  # LO_INT32
@@ -60,13 +71,15 @@ class AIOLoTestCase(unittest.TestCase):
                 'b',  # LO_BLOB
                 'h',  # LO_INT64
                 int,  # LO_INT64
-                TimeTag,  # LO_TIMETAG
+                aiolo.TimeTag,  # LO_TIMETAG
+                datetime.datetime,  # LO_TIMETAG
+                't',  # LO_TIMETAG
                 't',  # LO_TIMETAG
                 float,  # LO_DOUBLE,
                 'd',  # LO_DOUBLE
                 # 'S',  # LO_SYMBOL
                 # 'c',  # LO_CHAR
-                Midi,  # LO_MIDI
+                aiolo.Midi,  # LO_MIDI
                 'm',  # LO_MIDI
                 True,  # LO_TRUE
                 'T',  # LO_TRUE
@@ -79,11 +92,10 @@ class AIOLoTestCase(unittest.TestCase):
             ]
         )
         server.start()
-        task = self.create_task(self.sub(sub, 3))
+        task = self.create_task(self.sub(route.sub(), 3))
         for i in range(1, 4):
             client.pub(
-                '/foo',
-                'issbbbhhttddmmTTFFNNII',
+                route,
                 i,  # LO_INT32
                 # float(i),  # LO_FLOAT
                 str(i),  # LO_STRING
@@ -93,14 +105,16 @@ class AIOLoTestCase(unittest.TestCase):
                 b'%i' % i,  # LO_BLOB
                 i * 1000000000000000000,  # LO_INT64
                 i * 1000000000000000000,  # LO_INT64
-                TimeTag(i, i * 3),  # LO_TIMETAG
-                TimeTag(i, i * 3),  # LO_TIMETAG
+                aiolo.TimeTag.from_datetime(EPOCH + datetime.timedelta(seconds=i)),  # LO_TIMETAG
+                EPOCH + datetime.timedelta(seconds=i),  # LO_TIMETAG
+                i,  # LO_TIMETAG
+                float(i) + 0.1,  # LO_TIMETAG
                 float(i),  # LO_DOUBLE,
                 float(i),  # LO_DOUBLE
                 # str(i),  # LO_SYMBOL
                 # bytes(i),  # LO_CHAR
-                Midi(i, i * 2, i * 3, i * 4),  # LO_MIDI
-                Midi(i, i * 2, i * 3, i * 4),  # LO_MIDI
+                aiolo.Midi(i, i * 2, i * 3, i * 4),  # LO_MIDI
+                aiolo.Midi(i, i * 2, i * 3, i * 4),  # LO_MIDI
                 True,  # LO_TRUE
                 True,  # LO_TRUE
                 False,  # LO_FALSE
@@ -111,29 +125,49 @@ class AIOLoTestCase(unittest.TestCase):
                 float('inf'),  # LO_INFINITUM
             )
             await asyncio.sleep(0.001)
-        self.items = await task
+        self.results = list(await task)
         server.stop()
 
-    def test_duplicate_subs(self):
-        self.loop.run_until_complete(self._test_duplicate_subs())
-        self.assertListEqual(self.sub1_items, [[1]])
-        self.assertListEqual(self.sub2_items, [[1]])
+    def test_multiple_subs(self):
+        self.loop.run_until_complete(self._test_multiple_subs())
+        self.assertListEqual(self.results, [[['bar']], [['bar']]])
 
-    async def _test_duplicate_subs(self):
-        server = Server(url='osc.udp://:10020')
-        client = Client(url='osc.udp://:%s' % server.port)
-        sub1 = server.sub('/foo', 'i')
-        sub2 = server.sub('/foo', 'i')
+    async def _test_multiple_subs(self):
+        server = aiolo.Server(url='osc.udp://:10001')
+        client = aiolo.Client(url='osc.udp://:%s' % server.port)
+        foo = server.route('/foo', 's')
         server.start()
         tasks = asyncio.gather(
-            self.create_task(self.sub(sub1, 1)),
-            self.create_task(self.sub(sub2, 1)),
+            self.create_task(self.sub(foo.sub(), 1)),
+            self.create_task(self.sub(foo.sub(), 1)),
         )
-        client.pub('/foo', 'i', 1)
-        sub1_items, sub2_items = await tasks
+        client.pub(foo, 'bar')
+        self.results = list(await tasks)
         server.stop()
-        self.sub1_items = sub1_items
-        self.sub2_items = sub2_items
+
+    def test_bundle(self):
+        self.loop.run_until_complete(self._test_bundle())
+        self.assertListEqual(self.results, [[['foo']], [['bar']], [['baz']]])
+
+    async def _test_bundle(self):
+        server = aiolo.Server(url='osc.udp://:10002')
+        client = aiolo.Client(url='osc.udp://:%s' % server.port)
+        foo = server.route('/foo', 's')
+        bar = server.route('/bar', 's')
+        baz = server.route('/baz', 's')
+        server.start()
+        tasks = asyncio.gather(
+            self.create_task(self.sub(foo.sub(), 1)),
+            self.create_task(self.sub(bar.sub(), 1)),
+            self.create_task(self.sub(baz.sub(), 1)),
+        )
+        client.bundle([
+            aiolo.Message(foo, 'foo'),
+            aiolo.Message(bar, 'bar'),
+            aiolo.Message(baz, 'baz'),
+        ])
+        self.results = list(await tasks)
+        server.stop()
 
     async def sub(self, sub, count):
         items = []
@@ -146,9 +180,11 @@ class AIOLoTestCase(unittest.TestCase):
 
     def create_task(self, coro):
         if sys.version_info[:2] >= (3, 8):
-            return asyncio.create_task(coro)
+            task = asyncio.create_task(coro)
         else:
-            return self.loop.create_task(coro)
+            task = self.loop.create_task(coro)
+        self.loop.call_later(3, task.cancel)
+        return task
 
 
 if __name__ == '__main__':

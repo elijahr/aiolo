@@ -4,3 +4,5 @@ build/
 *.egg-info
 .idea
 Pipfile*
+.DS_Store
+.eggs/

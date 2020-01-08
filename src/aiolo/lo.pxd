@@ -276,12 +276,6 @@ cdef extern from "lo/lo.h" nogil:
 
     int lo_pattern_match(char* str, char* p)
 
-    # int lo_send_internal(lo_address t, char* file, int line, char* path, char* types)
-
-    # int lo_send_timestamped_internal(lo_address t, char* file, int line, lo_timetag ts, char* path, char* types)
-
-    # int lo_send_from_internal(lo_address targ, lo_server from_, char* file, int line, lo_timetag ts, char* path, char* types)
-
     double lo_timetag_diff(lo_timetag a, lo_timetag b)
 
     void lo_timetag_now(lo_timetag* t)
@@ -353,8 +347,6 @@ cdef extern from "lo/lo.h" nogil:
     void lo_address_set_ttl(lo_address t, int ttl)
 
     int lo_address_get_ttl(lo_address t)
-
-    # int lo_send(lo_address targ, char* path, char* t, ...)
 
     int lo_send_from(lo_address targ, lo_server from_, lo_timetag ts, char* path, char* t, ...)
 

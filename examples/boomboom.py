@@ -5,70 +5,101 @@ boomboom: laptop keyboard drum machine
 
 To use (install the requirements):
 
-    $ pip install aiolo[dev]
-    $ ./boomboom.py
-
-Clack away!
+    $ pipenv install aiolo[dev]
+    $ python boomboom.py
 
 """
 import asyncio
 import multiprocessing
-
-import sounddevice
-import soundfile
-import uvloop
-
 import os
-import sys
-import select
-import tty
-import termios
+import random
+import time
+import warnings
 
 import aiolo
-
+import numpy as np
+import pyaudio
+import scipy.io.wavfile
+import scipy.signal
 
 ESC = '\x1b'
 
-_TRIGGERS = {
-    'kick': 'zxcvb',
-    'snar': 'nm,./',
-    'clap': 'asdfg',
-    'bell': 'hjkl;',
-    'chat': 'qwert',
-    'ohat': 'yuiop',
-}
-
-TRIGGERS = {
-    key: name
-    for name, keys in _TRIGGERS.items()
-    for key in keys
-}
-
 PATH = os.path.dirname(os.path.abspath(__file__))
 
+OSC_SERVER = 'osc.udp://:10033'
 
-def getch():
-    while True:
-        if select.select([sys.stdin], [], [], 10000) == ([sys.stdin], [], []):
-            ch = sys.stdin.read(1)
-            if ch == ESC:
-                break
-            yield ch
+RATE = 44100
+BPM = 120
+BPS = BPM / 60
+# 16th note
+STEP = 4 / 16 * (60 / BPM)
+FRAMES_PER_STEP = int(RATE * STEP)
+
+KICK = aiolo.Route('/kick', 'f')
+C_HAT = aiolo.Route('/c_hat', 'f')
+O_HAT = aiolo.Route('/o_hat', 'f')
+SNARE = aiolo.Route('/snare', 'f')
+CLAP = aiolo.Route('/clap', 'f')
+COWBELL = aiolo.Route('/cowbell', 'f')
+AIRHORN = aiolo.Route('/airhorn', 'f')
+EXIT = aiolo.Route('/exit', 'T')
+
+SEQUENCE = ((
+    KICK, C_HAT, O_HAT, C_HAT,
+    KICK, C_HAT, O_HAT, C_HAT,
+    KICK, C_HAT, O_HAT, C_HAT,
+    KICK, C_HAT, O_HAT, C_HAT,
+) * 2) + ((
+    KICK, C_HAT, CLAP, C_HAT,
+    KICK, CLAP, O_HAT, C_HAT,
+    KICK, C_HAT, CLAP, C_HAT,
+    KICK, CLAP, O_HAT, C_HAT,
+) * 2) + ((
+    KICK, C_HAT, CLAP, SNARE,
+    KICK, CLAP, O_HAT, C_HAT,
+    KICK, C_HAT, CLAP, SNARE,
+    KICK, CLAP, O_HAT, C_HAT,
+) * 2) + ((
+    KICK, C_HAT, CLAP, SNARE,
+    KICK, CLAP, O_HAT, COWBELL,
+    KICK, C_HAT, CLAP, SNARE,
+    KICK, CLAP, O_HAT, COWBELL,
+) * 2) + ((
+    AIRHORN, C_HAT, CLAP, SNARE,
+    KICK, CLAP, O_HAT, COWBELL,
+    KICK, C_HAT, CLAP, SNARE,
+    KICK, CLAP, O_HAT, COWBELL,
+    KICK, C_HAT, CLAP, SNARE,
+    KICK, CLAP, O_HAT, COWBELL,
+    KICK, C_HAT, CLAP, SNARE,
+    KICK, CLAP, O_HAT, COWBELL,
+) * 4)
+
+ROUTES = {
+    route: os.path.join(PATH, 'drums%s.wav' % route.path)
+    for route in (KICK, C_HAT, O_HAT, SNARE, CLAP, COWBELL, AIRHORN)
+}
 
 
 class Machine:
     def __init__(self):
-        self.loop = uvloop.new_event_loop()
-        self.server = aiolo.Server(url='osc.udp://:10022', loop=self.loop)
+        self.loop = asyncio.get_event_loop()
+        asyncio.set_event_loop(self.loop)
+        self.server = aiolo.Server(url=OSC_SERVER)
+        self.server.add_route(EXIT)
+        for route in ROUTES.keys():
+            self.server.add_route(route)
         self.subs = {
-            # set up some boolean trigger routes on the server
-            'kick': self.server.sub('/kick', 'T'),
-            'snar': self.server.sub('/snar', 'T'),
-            'chat': self.server.sub('/chat', 'T'),
-            'ohat': self.server.sub('/ohat', 'T'),
-            'bell': self.server.sub('/bell', 'T'),
-            'clap': self.server.sub('/clap', 'T'),
+            route: route.sub()
+            for route in ROUTES.keys()
         }
+        self.pyaudio = pyaudio.PyAudio()
+        self.stream = self.pyaudio.open(
+            format=pyaudio.paInt16,
+            channels=1,
+            rate=RATE,
+            output=True)
+        self.seqlock = asyncio.Lock(loop=self.loop)
 
     def run(self):
         self.server.start()
@@ -78,50 +109,75 @@ class Machine:
 
     async def serve(self):
         await asyncio.gather(*[
-            self.loop.create_task(self.handle_exit())
-        ] + [
-            self.loop.create_task(self.handle_drum(drum, sub))
-            for drum, sub in self.subs.items()
-        ])
+                                  self.loop.create_task(self.sub_drum(route, sub))
+                                  for route, sub in self.subs.items()
+                              ] + [
+                                  self.loop.create_task(self.sub_exit())
+                              ])
 
-    async def handle_exit(self):
-        async for _ in self.server.sub('/exit', 'T'):
-            for sub in self.subs:
+    async def sub_exit(self):
+        async for _ in EXIT.sub():
+            for sub in self.subs.values():
                 sub.unsub()
             break
 
-    async def handle_drum(self, drum, sub):
-        filepath = os.path.join(PATH, 'drums/%s.wav' % drum)
-        data, fs = soundfile.read(filepath, dtype='float32')
-        async for _ in sub:
-            sounddevice.play(data, fs)
+        self.stream.stop_stream()
+        self.stream.close()
+        self.pyaudio.terminate()
+
+    async def sub_drum(self, route, sub):
+        filepath = ROUTES[route]
+        samplerate, wav = scipy.io.wavfile.read(filepath)
+        async for (ratio,) in sub:
+            # sub will yield anytime it receives a trigger
+            data = scipy.signal.resample(wav, int(len(wav) * ratio))
+            data = data[:FRAMES_PER_STEP] / 10
+            self.stream.write(data.astype(np.int16))
 
 
-def serve():
-    machine = Machine()
-    machine.run()
+def subscribe():
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", category=DeprecationWarning)
+        machine = Machine()
+        machine.run()
+
+
+def publish():
+    # Give the server some time to start
+    time.sleep(0.25)
+    client = aiolo.Client(url=OSC_SERVER)
+    try:
+        for i, route in enumerate(SEQUENCE):
+            if route == COWBELL:
+                # pitch variance for cowbell
+                ratio = random.uniform(0.5, 3.2)
+            else:
+                ratio = 1.0
+            client.pubm(aiolo.Message(route, ratio))
+            time.sleep(STEP)
+    finally:
+        client.pubm(aiolo.Message(EXIT, [True]))
+
+
+def config_logging():
+    import logging
+    from aiolo.logs import logger
+    ch = logging.StreamHandler()
+    ch.setLevel(logging.DEBUG)
+    logger.addHandler(ch)
+    logger.setLevel(logging.DEBUG)
 
 
 def main():
-    serve_process = multiprocessing.Process(target=serve)
-    serve_process.start()
-
-    client = aiolo.Client(url='osc.udp://:10022')
-    prev = termios.tcgetattr(sys.stdin)
+    config_logging()
+    print("===\nAdjust your speakers to a safe volume and hit enter to start the music. Press CTRL-C to exit.\n===")
+    input()
+    proc = multiprocessing.Process(target=publish)
+    proc.start()
     try:
-        print('Pump up the volume and start clackin that keyboard')
-        tty.setcbreak(sys.stdin.fileno())
-        for ch in getch():
-            try:
-                drum = TRIGGERS[ch]
-            except KeyError:
-                pass
-            else:
-                client.pub('/%s' % drum, 'T', True)
+        subscribe()
     finally:
-        client.pub('/exit', 'T', True)
-        serve_process.join()
-        termios.tcsetattr(sys.stdin, termios.TCSADRAIN, prev)
+        proc.join()
 
 
 if __name__ == '__main__':

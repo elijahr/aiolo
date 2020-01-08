@@ -21,3 +21,7 @@ class DuplicateRoute(AIOLoError):
 
 class RouteDoesNotExist(AIOLoError):
     pass
+
+
+class SendError(AIOLoError):
+    pass

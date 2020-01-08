@@ -28,6 +28,11 @@ setup(
     },
     ext_modules=[
         Extension(
+            'aiolo.bundles',
+            sources=['src/aiolo/bundles.pyx'],
+            libraries=['lo'],
+        ),
+        Extension(
             'aiolo.clients',
             sources=['src/aiolo/clients.pyx'],
             libraries=['lo'],
@@ -35,6 +40,11 @@ setup(
         Extension(
             'aiolo.lo',
             sources=['src/aiolo/lo.pyx'],
+            libraries=['lo'],
+        ),
+        Extension(
+            'aiolo.messages',
+            sources=['src/aiolo/messages.pyx'],
             libraries=['lo'],
         ),
         Extension(
@@ -47,6 +57,11 @@ setup(
             libraries=['lo'],
         ),
         Extension(
+            'aiolo.timetags',
+            sources=['src/aiolo/timetags.pyx'],
+            libraries=['lo'],
+        ),
+        Extension(
             'aiolo.utils',
             sources=['src/aiolo/utils.pyx'],
             libraries=['lo'],
@@ -56,9 +71,10 @@ setup(
     install_requires=['janus>=0.4.0,<1.0.0'],
     extras_require={
         'dev': [
-            'soundfile',
-            'sounddevice',
+            'pyaudio',
             'uvloop',
+            'scipy',
+            'numpy',
         ]
     },
     classifiers=[

@@ -6,4 +6,4 @@ from . cimport lo
 cdef class Client:
 
     # private
-    cdef lo.lo_address _lo_address
+    cdef lo.lo_address lo_address

@@ -1,14 +1,24 @@
+import asyncio
+
 import janus
 
 from . import exceptions
+from . import logs
+from . import routes
 
 
 class Sub:
     __slots__ = ('inbox', 'route')
 
-    def __init__(self, route, loop):
+    def __init__(self, route: routes.Route, loop: asyncio.AbstractEventLoop = None):
         self.route = route
+        if loop is None:
+            loop = asyncio.get_event_loop()
         self.inbox = janus.Queue(loop=loop)
+        logs.logger.debug('%r: created' % self)
+
+    def __repr__(self):
+        return 'Sub(%r)' % self.route
 
     def pub(self, item):
         self.inbox.sync_q.put(item)

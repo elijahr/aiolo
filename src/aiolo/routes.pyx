@@ -1,4 +1,5 @@
 # cython: language_level: 3
+
 import asyncio
 from typing import Union, Iterable
 
@@ -6,67 +7,43 @@ from . import subs
 from . cimport utils
 
 
-ROUTES = {}
-
-
 cdef class Route:
-    def __cinit__(self, path: str, lotypes: str, loop: asyncio.AbstractEventLoop = None):
+    def __cinit__(
+            self,
+            path: Union[str, bytes],
+            lotypes: Union[str, bytes, Iterable] = None
+    ):
+        if isinstance(path, bytes):
+            path = path.decode('utf8')
         self.path = path
-        self.lotypes = lotypes
+        lotypes = utils.ensure_lotypes(lotypes)
+        self.lotypes = lotypes.decode('utf8')
         self.subs = []
-        if loop is None:
-            loop = asyncio.get_event_loop()
-        self.loop = loop
 
-    def __init__(self, path: str, lotypes: str, loop: asyncio.AbstractEventLoop = None):
+    def __init__(
+            self,
+            path: Union[str, bytes],
+            lotypes: Union[str, bytes, Iterable] = None
+    ):
         pass
+
+    def __repr__(self):
+        return 'Route(%r, %r)' % (self.path, self.lotypes)
+
+    def __hash__(self):
+        return hash('%s:%s' % (self.path, self.lotypes))
 
     def pub(self, item):
         for sub in self.subs:
             sub.pub(item)
 
-    def sub(self):
-        sub = subs.Sub(self, loop=self.loop)
+    def sub(self, loop: asyncio.AbstractEventLoop = None) -> subs.Sub:
+        sub = subs.Sub(self, loop=loop)
         self.subs.append(sub)
         return sub
 
     def unsub(self, sub):
         self.subs.remove(sub)
-
-    @classmethod
-    def get_or_create(cls, path: str, pytypes: Union[str, bytes, Iterable] = None, loop: asyncio.AbstractEventLoop = None):
-        if isinstance(pytypes, bytes):
-            lotypes = pytypes.decode('utf8')
-        elif isinstance(pytypes, str):
-            lotypes = pytypes
-        else:
-            lotypes = utils.pytypes_to_lotypes(pytypes).decode('utf8')
-        try:
-            return ROUTES[route_key(path, lotypes)], False
-        except KeyError:
-            route = cls(path, lotypes, loop)
-            ROUTES[route.key] = route
-            return route, True
-
-    @classmethod
-    def unroute(cls, path: str, pytypes: Union[str, bytes, Iterable] = None):
-        if isinstance(pytypes, bytes):
-            lotypes = pytypes.decode('utf8')
-        elif isinstance(pytypes, str):
-            lotypes = pytypes
-        else:
-            lotypes = utils.pytypes_to_lotypes(pytypes).decode('utf8')
-        try:
-            route = ROUTES[route_key(path, lotypes)]
-        except KeyError:
-            return None
-        else:
-            del ROUTES[route.key]
-            return route
-
-    @property
-    def key(self):
-        return route_key(self.path, self.lotypes)
 
     @property
     def bpath(self):
@@ -75,7 +52,3 @@ cdef class Route:
     @property
     def blotypes(self):
         return self.lotypes.encode('utf8')
-
-
-def route_key(path, lotypes):
-    return '%s:%s' % (path, lotypes)

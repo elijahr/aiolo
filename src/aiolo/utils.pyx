@@ -1,11 +1,13 @@
 # cython: language_level=3
+import datetime
+from typing import Union, Iterable
 
 from libc.stdint cimport uint64_t, uint32_t, int32_t, int64_t, uint8_t, INT32_MAX, INT64_MAX
 from libc.stdlib cimport malloc, free
 
 from . cimport lo
-from . import midi
-from . import timetag
+from . import midis
+from . cimport timetags
 
 # Below are defined in lo_osc_types.h
 
@@ -52,8 +54,9 @@ TYPE_MAP = {
     str: LO_STRING,
     bytes: LO_BLOB,
     bytearray: LO_BLOB,
-    midi.Midi: LO_MIDI,
-    timetag.TimeTag: LO_TIMETAG,
+    midis.Midi: LO_MIDI,
+    timetags.TimeTag: LO_TIMETAG,
+    datetime.datetime: LO_TIMETAG,
     True: LO_TRUE,
     False: LO_FALSE,
     None: LO_NIL,
@@ -76,13 +79,24 @@ TYPE_MAP = {
 }
 
 
-cdef bytes pytypes_to_lotypes(object types):
+cpdef bytes ensure_lotypes(types: Union[str, bytes, Iterable, None]):
     """
-    Transform an iterable of Python type objects into a liblo type definition string.
+    Transform an iterable of types into a liblo type definition string.
+
+    The types can be Python type objects, or strings/bytes representing liblo types (in which case this
+    function simply validates that the types are valid).
 
     :param types: iterable of types
     :return: bytes
     """
+    if types is None:
+        types = b''
+
+    if isinstance(types, bytes):
+        lotypes = types.decode('utf8')
+    elif isinstance(types, str):
+        lotypes = types
+
     lotypes = bytearray()
     for t in types:
         if isinstance(t, str):
@@ -98,36 +112,44 @@ cdef bytes pytypes_to_lotypes(object types):
 
 cdef lo.lo_message pyargs_to_lomessage(object lotypes, object args):
     cdef:
-        lo.lo_message lo_msg
+        lo.lo_message lo_message
         lo.lo_blob lo_blob
-        lo.lo_timetag * lo_tt_p
         uint8_t * midi_p
+        lo.lo_timetag * tt_p
         unsigned char * blob
+
+    if len(lotypes) != len(args):
+        raise ValueError('Expected %s args, got %s' % (len(lotypes), len(args)))
 
     if isinstance(lotypes, str):
         lotypes = lotypes.encode('utf8')
 
     lotypes = bytearray(lotypes)
 
-    lo_msg = lo.lo_message_new()
-    if lo_msg is NULL:
+    lo_message = lo.lo_message_new()
+    if lo_message is NULL:
         raise MemoryError
     for i, (lotype, arg) in enumerate(zip(lotypes, args)):
         if lotype == LO_INT32:
             if arg > INT32_MAX:
                 raise ValueError('Cannot cast %s to int32_t' % arg)
-            lo.lo_message_add_int32(lo_msg, <int32_t>arg)
+            if lo.lo_message_add_int32(lo_message, <int32_t>int(arg)) != 0:
+                raise MemoryError
         elif lotype == LO_INT64:
             if arg > INT64_MAX:
                 raise ValueError('Cannot cast %s to int64_t' % arg)
-            lo.lo_message_add_int64(lo_msg, <int64_t>arg)
+            if lo.lo_message_add_int64(lo_message, <int64_t>int(arg)) != 0:
+                raise MemoryError
         elif lotype in (LO_FLOAT, LO_DOUBLE):
-            lo.lo_message_add_double(lo_msg, <double>arg)
+            if lo.lo_message_add_double(lo_message, <double>float(arg)) != 0:
+                raise MemoryError
         elif lotype == LO_INFINITUM:
-            lo.lo_message_add_infinitum(lo_msg)
+            if lo.lo_message_add_infinitum(lo_message) != 0:
+                raise MemoryError
         elif lotype == LO_STRING:
             barg = arg.encode('utf8')
-            lo.lo_message_add_string(lo_msg, barg)
+            if lo.lo_message_add_string(lo_message, barg) != 0:
+                raise MemoryError
         elif lotype == LO_BLOB:
             if not len(arg):
                 # Or should we just add nil?
@@ -137,31 +159,41 @@ cdef lo.lo_message pyargs_to_lomessage(object lotypes, object args):
             lo_blob = lo.lo_blob_new(<int32_t>(len(arg)), <void*>blob)
             if lo_blob is NULL:
                 raise MemoryError
-            lo.lo_message_add_blob(lo_msg, lo_blob)
+            if lo.lo_message_add_blob(lo_message, lo_blob) != 0:
+                raise MemoryError
             lo.lo_blob_free(lo_blob)
         elif lotype == LO_TIMETAG:
-            lo_tt_p = <lo.lo_timetag*>(malloc(sizeof(lo.lo_timetag)))
-            lo_tt_p[0].sec = arg[0]
-            lo_tt_p[0].frac = arg[1]
-            lo.lo_message_add_timetag(lo_msg, lo_tt_p[0])
-            free(lo_tt_p)
+            if isinstance(arg, (float, int)):
+                timetag = timetags.TimeTag(arg)
+            elif isinstance(arg, datetime.datetime):
+                timetag = timetags.TimeTag.from_datetime(arg)
+            elif isinstance(arg, timetags.TimeTag):
+                timetag = arg
+            else:
+                raise ValueError('Invalid TimeTag argument %r' % arg)
+            if message_add_timetag(lo_message, timetag) != 0:
+                raise MemoryError
         elif lotype == LO_MIDI:
             midi_p = <uint8_t*>(malloc(sizeof(uint8_t) * 4))
-            midi_p[0] = <uint8_t>arg[0]
-            midi_p[1] = <uint8_t>arg[1]
-            midi_p[2] = <uint8_t>arg[2]
-            midi_p[3] = <uint8_t>arg[3]
-            lo.lo_message_add_midi(lo_msg, midi_p)
+            midi_p[0] = <uint8_t>int(arg[0])
+            midi_p[1] = <uint8_t>int(arg[1])
+            midi_p[2] = <uint8_t>int(arg[2])
+            midi_p[3] = <uint8_t>int(arg[3])
+            if lo.lo_message_add_midi(lo_message, midi_p) != 0:
+                raise MemoryError
             free(midi_p)
         elif lotype == LO_NIL:
-            lo.lo_message_add_nil(lo_msg)
+            if lo.lo_message_add_nil(lo_message) != 0:
+                raise MemoryError
         elif lotype == LO_TRUE:
-            lo.lo_message_add_true(lo_msg)
+            if lo.lo_message_add_true(lo_message) != 0:
+                raise MemoryError
         elif lotype == LO_FALSE:
-            lo.lo_message_add_false(lo_msg)
+            if lo.lo_message_add_false(lo_message) != 0:
+                raise MemoryError
         else:
             raise ValueError('Unhandled type %s: %s' % (type(arg), repr(arg)))
-    return lo_msg
+    return lo_message
 
 
 cdef object lomessage_to_pyargs(char * lotypes, lo.lo_arg ** argv, int argc):
@@ -186,7 +218,8 @@ cdef object lomessage_to_pyargs(char * lotypes, lo.lo_arg ** argv, int argc):
         elif lotypes[i] == LO_INT64:
             data.append(arg.i64)
         elif lotypes[i] == LO_TIMETAG:
-            data.append((arg.t.sec, arg.t.frac))
+            timestamp = timestamp_from_lo_timetag(<lo.lo_timetag>arg.t)
+            data.append(timetags.TimeTag(timestamp))
         elif lotypes[i] == LO_DOUBLE:
             data.append(arg.f)
         elif lotypes[i] == LO_SYMBOL:
@@ -208,3 +241,11 @@ cdef object lomessage_to_pyargs(char * lotypes, lo.lo_arg ** argv, int argc):
             raise ValueError('Unknown type %r' % <bytes>lotypes[i])
         i += 1
     return data
+
+
+cdef int timestamp_from_lo_timetag(lo.lo_timetag lo_timetag):
+    return lo_timetag.sec + ((<float>lo_timetag.frac) * (1/2**32))
+
+
+cdef int message_add_timetag(lo.lo_message lo_message, timetags.TimeTag timetag):
+    return lo.lo_message_add_timetag(lo_message, timetag.lo_timetag)
