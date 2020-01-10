@@ -11,7 +11,7 @@ from . cimport timetags
 cdef class Bundle:
     def __cinit__(
             self,
-            msgs: Iterable[messages.Message, None] = None,
+            msgs: Iterable[messages.Message] = None,
             timetag: Union[timetags.TimeTag, datetime.datetime, float, None] = None
     ):
         if timetag is None:
@@ -29,9 +29,8 @@ cdef class Bundle:
 
     def __init__(
             self,
-            msgs: Iterable[messages.Message],
-            *,
-            timetag: Union[timetags.TimeTag, datetime.datetime, float, None]
+            msgs: Iterable[messages.Message] = None,
+            timetag: Union[timetags.TimeTag, datetime.datetime, float, None] = None
     ):
         pass
 

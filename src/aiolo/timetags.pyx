@@ -1,6 +1,7 @@
 # cython: language_level=3
 
 import datetime
+from typing import Union
 
 from libc.stdint cimport uint32_t
 from libc.stdlib cimport malloc, free
@@ -14,7 +15,7 @@ EPOCH = datetime.datetime.utcfromtimestamp(0)
 
 
 cdef class TimeTag:
-    def __cinit__(self, timestamp: float):
+    def __cinit__(self, timestamp: Union[float, int]):
         # The number of seconds since Jan 1st 1900 in the UTC timezone.
         sec = int(timestamp)
         # The fractions of a second offset from above, expressed as 1/2^32nds of a second
@@ -26,7 +27,7 @@ cdef class TimeTag:
         self.lo_timetag.sec = <uint32_t>sec
         self.lo_timetag.frac = <uint32_t>frac
 
-    def __init__(self, timestamp: float):
+    def __init__(self, timestamp: Union[float]):
         pass
 
     def __dealloc__(self):
