@@ -36,7 +36,7 @@ matrix:
       env: CPYTHON_VERSION=3.8.1 PYTHON_PATH=/usr/local/bin/python3.8
       language: generic
     - os: osx
-      env: PYPY=1 PYTHON_PATH=/root/pypy3.6-v7.3.0-osx64/bin/pypy3
+      env: PYPY=1 PYTHON_PATH=~/pypy3.6-v7.3.0-osx64/bin/pypy3
       language: generic
 
 install:
@@ -55,8 +55,9 @@ install:
         brew install liblo;
         pip install pipenv;
         ulimit -n 1200;
+        pwd;
         if [ ! -z "$PYPY" ]; then
-          cd /root;
+          cd ~;
           curl -s -L "https://bitbucket.org/pypy/pypy/downloads/pypy3.6-v7.3.0-osx64.tar.bz2" | tar xvj;
           cd $TRAVIS_BUILD_DIR;
         else
