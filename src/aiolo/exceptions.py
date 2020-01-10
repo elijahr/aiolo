@@ -25,3 +25,11 @@ class RouteDoesNotExist(AIOLoError):
 
 class SendError(AIOLoError):
     pass
+
+
+class RouteError(AIOLoError):
+    pass
+
+
+class ServeError(AIOLoError):
+    pass

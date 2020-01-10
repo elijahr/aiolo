@@ -1,8 +1,8 @@
 # cython: language_level=3
 
+import asyncio
 import datetime
 from typing import Union, Iterable
-
 
 from . cimport bundles
 from . import exceptions
@@ -43,10 +43,11 @@ cdef class Client:
             del message
 
     def pubm(self, message: messages.Message) -> None:
-        logs.logger.debug('%r: publishing %r' % (self, message))
-        ret = lo.lo_send_message(self.lo_address, message.route.bpath, message.lo_message)
-        if ret < 0:
-            raise exceptions.SendError(ret)
+        logs.logger.debug('%r: publishing %r', self, message)
+        count = lo.lo_send_message(self.lo_address, message.route.bpath, message.lo_message())
+        if count <= 0:
+            raise exceptions.SendError(count)
+        logs.logger.debug('%r: sent %s bytes', self, count)
 
     def bundle(
             self,
@@ -60,9 +61,10 @@ cdef class Client:
             del bundle
 
     def bundleb(self, bundle: bundles.Bundle):
-        logs.logger.debug('%r: publishing %r' % (self, bundle))
-        ret = lo.lo_send_bundle(self.lo_address, bundle.lo_bundle)
-        if ret < 0:
-            raise exceptions.SendError(ret)
+        logs.logger.debug('%r: publishing %r', self, bundle)
+        count = lo.lo_send_bundle(self.lo_address, bundle.lo_bundle)
+        if count <= 0:
+            raise exceptions.SendError(count)
+        logs.logger.debug('%r: sent %s bytes', self, count)
 
 

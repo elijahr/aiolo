@@ -9,11 +9,9 @@ asyncio-friendly Python bindings for [liblo](http://liblo.sourceforge.net/), an 
 pip install aiolo
 ```
 
-Tests run on both Linux and OS X for the following Python versions:
-* CPython: 3.6.4, 3.7.0, 3.8.0
-* PyPy: 7.2.0 (3.6.9)
-
-CPython 3.6.3 and lower are not supported due to [this bug](https://bugs.python.org/issue20891).
+Tests run on Travis CI with the following configurations:
+* Ubuntu 18.04 Bionic Beaver + liblo 0.29 + [CPython3.6, CPython3.7, CPython3.8, PyPy7.3.0 (3.6.9)]
+* OSX + liblo 0.29 + [CPython3.6, CPython3.7, CPython3.8, PyPy7.3.0 (3.6.9)]
 
 ## Usage
 

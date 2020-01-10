@@ -1,27 +1,24 @@
 import asyncio
 
-import janus
-
 from . import exceptions
 from . import logs
 from . import routes
 
 
 class Sub:
-    __slots__ = ('inbox', 'route')
+    __slots__ = ('inbox', 'route', 'loop')
 
-    def __init__(self, route: routes.Route, loop: asyncio.AbstractEventLoop = None):
+    def __init__(self, route: routes.Route):
         self.route = route
-        if loop is None:
-            loop = asyncio.get_event_loop()
-        self.inbox = janus.Queue(loop=loop)
-        logs.logger.debug('%r: created' % self)
+        self.inbox = asyncio.Queue()
+        logs.logger.debug('%r: created', self)
 
     def __repr__(self):
         return 'Sub(%r)' % self.route
 
     def pub(self, item):
-        self.inbox.sync_q.put(item)
+        logs.logger.debug('%r: publishing %r', self, item)
+        self.inbox.put_nowait(item)
 
     def unsub(self):
         self.route.unsub(self)
@@ -32,11 +29,13 @@ class Sub:
 
     async def __anext__(self):
         try:
-            msg = await self.inbox.async_q.get()
-            self.inbox.async_q.task_done()
+            logs.logger.debug('%r: waiting for next item in inbox...', self)
+            msg = await self.inbox.get()
+            logs.logger.debug('%r: got item from inbox %r', self, msg)
+            self.inbox.task_done()
             if isinstance(msg, Exception):
                 raise msg
-        except exceptions.Unsubscribed:
+        except (exceptions.Unsubscribed, GeneratorExit):
             raise StopAsyncIteration
         else:
             return msg

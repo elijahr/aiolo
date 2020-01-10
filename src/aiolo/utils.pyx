@@ -1,5 +1,7 @@
 # cython: language_level=3
+import asyncio
 import datetime
+import sys
 from typing import Union, Iterable
 
 from libc.stdint cimport uint64_t, uint32_t, int32_t, int64_t, uint8_t, INT32_MAX, INT64_MAX
@@ -249,3 +251,18 @@ cdef int timestamp_from_lo_timetag(lo.lo_timetag lo_timetag):
 
 cdef int message_add_timetag(lo.lo_message lo_message, timetags.TimeTag timetag):
     return lo.lo_message_add_timetag(lo_message, timetag.lo_timetag)
+
+
+cpdef create_task(object coro):
+    if sys.version_info[:2] >= (3, 8):
+        task = asyncio.create_task(coro)
+    else:
+        task = asyncio.get_running_loop().create_task(coro)
+    return task
+
+
+cpdef run_coro(coro):
+    if sys.version_info[:2] >= (3, 7):
+        return asyncio.run(coro)
+    else:
+        return asyncio.get_event_loop().run_until_complete(coro)

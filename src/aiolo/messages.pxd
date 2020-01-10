@@ -4,4 +4,6 @@ from . cimport lo
 
 cdef class Message:
     cdef public object route
-    cdef lo.lo_message lo_message
+    cdef tuple data
+
+    cdef lo.lo_message lo_message(self)

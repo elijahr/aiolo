@@ -2,6 +2,7 @@ import datetime
 import logging
 
 import faulthandler
+import sys
 
 faulthandler.enable(all_threads=True)
 
@@ -14,16 +15,20 @@ else:
     tracemalloc.start()
 
 import asyncio
-import sys
 import unittest
 
 import aiolo
 from aiolo.logs import logger
+from aiolo import utils
 
 ch = logging.StreamHandler()
 ch.setLevel(logging.DEBUG)
+
 logger.addHandler(ch)
 logger.setLevel(logging.DEBUG)
+
+logging.getLogger('asyncio').addHandler(ch)
+logging.getLogger('asyncio').setLevel(logging.DEBUG)
 
 
 EPOCH = datetime.datetime.utcfromtimestamp(0)
@@ -34,6 +39,7 @@ class AIOLoTestCase(unittest.TestCase):
         self.maxDiff = 3600
         self.loop = asyncio.new_event_loop()
         asyncio.set_event_loop(self.loop)
+        self.loop.set_debug(True)
         self.results = []
 
     def tearDown(self) -> None:
@@ -57,8 +63,8 @@ class AIOLoTestCase(unittest.TestCase):
         ])
 
     async def _test_types(self):
-        server = aiolo.Server(url='osc.udp://:10000')
-        client = aiolo.Client(url='osc.udp://:%s' % server.port)
+        server = aiolo.Server(url='osc.tcp://:10000')
+        client = aiolo.Client(url='osc.tcp://:10000')
         route = server.route(
             '/foo',
             [
@@ -92,7 +98,7 @@ class AIOLoTestCase(unittest.TestCase):
             ]
         )
         server.start()
-        task = self.create_task(self.sub(route.sub(), 3))
+        task = utils.create_task(self.sub(route.sub(), 3))
         for i in range(1, 4):
             client.pub(
                 route,
@@ -124,7 +130,6 @@ class AIOLoTestCase(unittest.TestCase):
                 float('inf'),  # LO_INFINITUM
                 float('inf'),  # LO_INFINITUM
             )
-            await asyncio.sleep(0.001)
         self.results = list(await task)
         server.stop()
 
@@ -133,13 +138,13 @@ class AIOLoTestCase(unittest.TestCase):
         self.assertListEqual(self.results, [[['bar']], [['bar']]])
 
     async def _test_multiple_subs(self):
-        server = aiolo.Server(url='osc.udp://:10001')
-        client = aiolo.Client(url='osc.udp://:%s' % server.port)
+        server = aiolo.Server(url='osc.tcp://:10001')
+        client = aiolo.Client(url='osc.tcp://:10001')
         foo = server.route('/foo', 's')
         server.start()
         tasks = asyncio.gather(
-            self.create_task(self.sub(foo.sub(), 1)),
-            self.create_task(self.sub(foo.sub(), 1)),
+            utils.create_task(self.sub(foo.sub(), 1)),
+            utils.create_task(self.sub(foo.sub(), 1)),
         )
         client.pub(foo, 'bar')
         self.results = list(await tasks)
@@ -150,16 +155,16 @@ class AIOLoTestCase(unittest.TestCase):
         self.assertListEqual(self.results, [[['foo']], [['bar']], [['baz']]])
 
     async def _test_bundle(self):
-        server = aiolo.Server(url='osc.udp://:10002')
-        client = aiolo.Client(url='osc.udp://:%s' % server.port)
+        server = aiolo.Server(url='osc.tcp://:10002')
+        client = aiolo.Client(url='osc.tcp://:10002')
         foo = server.route('/foo', 's')
         bar = server.route('/bar', 's')
         baz = server.route('/baz', 's')
         server.start()
         tasks = asyncio.gather(
-            self.create_task(self.sub(foo.sub(), 1)),
-            self.create_task(self.sub(bar.sub(), 1)),
-            self.create_task(self.sub(baz.sub(), 1)),
+            utils.create_task(self.sub(foo.sub(), 1)),
+            utils.create_task(self.sub(bar.sub(), 1)),
+            utils.create_task(self.sub(baz.sub(), 1)),
         )
         client.bundle([
             aiolo.Message(foo, 'foo'),
@@ -174,17 +179,9 @@ class AIOLoTestCase(unittest.TestCase):
         async for item in sub:
             items.append(item)
             if len(items) == count:
+                sub.unsub()
                 break
-        sub.unsub()
         return items
-
-    def create_task(self, coro):
-        if sys.version_info[:2] >= (3, 8):
-            task = asyncio.create_task(coro)
-        else:
-            task = self.loop.create_task(coro)
-        self.loop.call_later(10, task.cancel)
-        return task
 
 
 if __name__ == '__main__':

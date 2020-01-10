@@ -1,4 +1,4 @@
-dist: xenial
+dist: bionic
 
 deploy:
   provider: pypi
@@ -7,61 +7,66 @@ deploy:
     secure: ZtlduphZrPMDSA1wJPOH4MN03WmvV73mZF4gADmWcHEksNxeZYD744UqUa95pLnV6XGZgDxRNIls7ZcCjgNkkzvlDKRVdCAhrML0QvCn6YCQF5oH/hUjWhKy3mmvR6zcdYu/pGN0nYax2Ls8SmJo05MK4qAjIunJqoxbEfMS0EftqQzf4VDpUBNtvjn00k2IqNLM2pnAPa4BWFoQQTsgaXKzs4z2z2AjlR+7T08l3yXWTQahYITffb9O1dN5uXi2iKeR0ctgfonS26qgR3MyD4v56GUZGVX9PLYJMTYvJRBd3VaQ38vy7n3J6xCUeXGALOSb6+WcROcopoxE+m/5px9nVp28rc5C+bw6V2h3nzIYxRLZQV6pjGWV+t7p6vbnG772DZwsz1MWWtWEd2wmV18mS/h/rv6ZMiXYKdRI25v1WQgXzXn/vxDpZNnqWskrvBwrrEbnzrV3v6qR4rgYOaS+ihlCYSrh4tCvCWGodZ9A36LboC52mXqq1dSTBy+Di7C8vmCpy8sU9AdiRsT5cRdVvDEN7JQcTLHuwAZpy+2GYxULpGAF6do5PMzrJ0lGBic9MwxA1e++Bj1PoqXKjRgVYMyiPZ88oOj6dWei8axuTWqmZWpu8BLdnRAvdMnTf/VaNaPlYdpe8xgVmuQLzHDLlQu4Pb23djRtnSHX66s=
   on:
     tags: true
-    condition: $RELEASER = 1
+    condition: $TRAVIS_OS_NAME = "linux"
 
 language: c
-cache:
-  - ccache
-  - pip
-  - directories:
-    - /opt/python
 
 matrix:
   include:
     - os: linux
-      env: PYENV_VERSION=3.6.4
+      env: DEBIAN_FRONTEND=noninteractive
+      python:
+        - "3.6"
+        - "3.7"
+        - "3.8"
     - os: linux
-      env: PYENV_VERSION=3.7.0
-    - os: linux
-      env: PYENV_VERSION=3.8.0 RELEASER=1
-    - os: linux
-      env: PYENV_VERSION=pypy3.6-7.2.0
+      env: PYPY=1 DEBIAN_FRONTEND=noninteractive
 
     - os: osx
-      env: PYENV_VERSION=3.6.4
+      env: CPYTHON_VERSION=3.6.8 PYTHON_PATH=/usr/local/bin/python3.6
     - os: osx
-      env: PYENV_VERSION=3.7.0
+      env: CPYTHON_VERSION=3.7.6 PYTHON_PATH=/usr/local/bin/python3.7
     - os: osx
-      env: PYENV_VERSION=3.8.0
+      env: CPYTHON_VERSION=3.8.1 PYTHON_PATH=/usr/local/bin/python3.8
     - os: osx
-      env: PYENV_VERSION=pypy3.6-7.2.0
+      env: PYPY=1 PYTHON_PATH=/root/pypy3.6-v7.3.0-osx64/bin/pypy3
 
 before_install:
   - |
       if [ "$TRAVIS_OS_NAME" = "linux" ]; then
-        sudo apt-get update;
-        sudo apt-get install liblo7 liblo-dev;
-        pushd /opt/pyenv;
-        git pull origin master;
-        popd;
-        sudo pip install pipenv;
+        sudo apt-get update
+        sudo apt-get install -y \
+            build-essential python python-pip python-virtualenv liblo7 liblo-dev \
+            software-properties-common
+        sudo pip install pipenv
+        if [ ! -z "$PYPY" ]; then
+          sudo add-apt-repository ppa:pypy/ppa;
+          sudo apt-get update;
+          sudo apt-get install -y pypy3;
+          pipenv install --python `which pypy3` --skip-lock;s
+        else
+          pipenv install --python `which python` --skip-lock;
+        fi
       fi
   - |
       if [ "$TRAVIS_OS_NAME" = "osx" ]; then
         brew update;
         brew install liblo;
         pip install pipenv;
-        export PATH="/usr/local/opt/ccache/libexec:$PATH";
         ulimit -n 1200;
+        if [ ! -z "$PYPY" ]; then
+          cd /root;
+          curl -s -L "https://bitbucket.org/pypy/pypy/downloads/pypy3.6-v7.3.0-osx64.tar.bz2" | tar xvj;
+          cd $TRAVIS_BUILD_DIR;
+        else
+          curl -s -L "https://www.python.org/ftp/python/$CPYTHON_VERSION/python-$CPYTHON_VERSION-macosx10.9.pkg" --output python.pkg;
+          sudo installer -pkg python.pkg -target /;
+        fi
+        pipenv install --python "$PYTHON_PATH" --skip-lock;
       fi
 
 install:
-
-  - cd $TRAVIS_BUILD_DIR
-  - pyenv install $PYENV_VERSION --skip-existing;
-  - pipenv install --python $(pyenv prefix $PYENV_VERSION)/bin/python --skip-lock;
   - pipenv run python setup.py install
 
 script:
   - pipenv run python test.py
-  - rm -Rf aiolo.egg-info .eggs  # cleanup for deploy

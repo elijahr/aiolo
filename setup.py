@@ -68,7 +68,6 @@ setup(
         ),
     ],
     setup_requires=['cython'],
-    install_requires=['janus>=0.4.0,<1.0.0'],
     extras_require={
         'dev': [
             'pyaudio',

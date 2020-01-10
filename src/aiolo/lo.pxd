@@ -367,6 +367,10 @@ cdef extern from "lo/lo.h" nogil:
     void lo_version(char* verstr, int verstr_size, int* major, int* minor, char* extra, int extra_size, int* lt_major, int* lt_minor, int* lt_bug)
 
 
+ctypedef struct lo_address_header:
+    char *host
+    int socket
+
 # This is only needed so the module gets an init
 cdef class Nothing:
     pass

@@ -1,6 +1,5 @@
-# cython: language_level: 3
+# cython: language_level=3
 
-import asyncio
 from typing import Union, Iterable
 
 from . import subs
@@ -37,8 +36,8 @@ cdef class Route:
         for sub in self.subs:
             sub.pub(item)
 
-    def sub(self, loop: asyncio.AbstractEventLoop = None) -> subs.Sub:
-        sub = subs.Sub(self, loop=loop)
+    def sub(self):
+        sub = subs.Sub(self)
         self.subs.append(sub)
         return sub
 

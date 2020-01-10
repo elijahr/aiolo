@@ -3,4 +3,4 @@
 cdef class Route:
     cdef public str path
     cdef public str lotypes
-    cdef list subs
+    cdef public object subs

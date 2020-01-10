@@ -45,3 +45,7 @@ cdef object lomessage_to_pyargs(char * lotypes, lo.lo_arg ** argv, int argc)
 cdef int timestamp_from_lo_timetag(lo.lo_timetag lo_timetag)
 
 cdef int message_add_timetag(lo.lo_message lo_message, timetags.TimeTag timetag)
+
+cpdef create_task(object coro)
+
+cpdef run_coro(coro)

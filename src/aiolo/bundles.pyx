@@ -39,7 +39,7 @@ cdef class Bundle:
         return 'Bundle(%r, %r)' % (self.msgs, self.timetag)
 
     cpdef void add_message(Bundle self, messages.Message message):
-        if lo.lo_bundle_add_message(self.lo_bundle, message.route.bpath, message.lo_message) != 0:
+        if lo.lo_bundle_add_message(self.lo_bundle, message.route.bpath, message.lo_message()) != 0:
             raise MemoryError
         self.msgs.append(message)
 
