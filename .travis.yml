@@ -47,7 +47,6 @@ install:
             build-essential python python-pip python-virtualenv liblo7 liblo-dev
         sudo pip install pipenv
         pipenv install --python `which python` --skip-lock;
-        fi
       fi
   - |
       if [ "$TRAVIS_OS_NAME" = "osx" ]; then
