@@ -6,8 +6,8 @@ from typing import Union, Iterable
 from libc.stdint cimport uint64_t, uint32_t, int32_t, int64_t, uint8_t, INT32_MAX, INT64_MAX
 from libc.stdlib cimport malloc, free
 
-from . cimport lo, timetags
 from . import midis
+from . cimport lo, timetags
 
 # Below are defined in lo_osc_types.h
 
@@ -46,7 +46,6 @@ cpdef char LO_INFINITUM = b'I'
 
 
 INFINITY = float('inf')
-
 
 TYPE_MAP = {
     int: LO_INT64,
@@ -115,7 +114,6 @@ cdef lo.lo_message pyargs_to_lomessage(object lotypes, object args):
         lo.lo_message lo_message
         lo.lo_blob lo_blob
         uint8_t * midi_p
-        lo.lo_timetag * tt_p
         unsigned char * blob
 
     if len(lotypes) != len(args):
@@ -171,7 +169,7 @@ cdef lo.lo_message pyargs_to_lomessage(object lotypes, object args):
                 timetag = arg
             else:
                 raise ValueError('Invalid TimeTag argument %r' % arg)
-            if message_add_timetag(lo_message, timetag) != 0:
+            if lo.lo_message_add_timetag(lo_message, (<timetags.TimeTag>timetag).lo_timetag) != 0:
                 raise MemoryError
         elif lotype == LO_MIDI:
             midi_p = <uint8_t*>(malloc(sizeof(uint8_t) * 4))
@@ -218,7 +216,7 @@ cdef object lomessage_to_pyargs(char * lotypes, lo.lo_arg ** argv, int argc):
         elif lotypes[i] == LO_INT64:
             data.append(arg.i64)
         elif lotypes[i] == LO_TIMETAG:
-            timestamp = timetags.timestamp_from_lo_timetag(<lo.lo_timetag>arg.t)
+            timestamp = timestamp_from_lo_timetag(<lo.lo_timetag>arg.t)
             data.append(timetags.TimeTag(timestamp))
         elif lotypes[i] == LO_DOUBLE:
             data.append(arg.f)
@@ -243,6 +241,5 @@ cdef object lomessage_to_pyargs(char * lotypes, lo.lo_arg ** argv, int argc):
     return data
 
 
-cdef int message_add_timetag(lo.lo_message lo_message, timetags.TimeTag timetag):
-    return lo.lo_message_add_timetag(lo_message, timetag.lo_timetag)
-
+cdef int timestamp_from_lo_timetag(lo.lo_timetag lo_timetag):
+    return lo_timetag.sec + ((<float>lo_timetag.frac) * (1/2**32))

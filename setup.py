@@ -58,8 +58,8 @@ setup(
             libraries=['lo'],
         ),
         Extension(
-            'aiolo.utils',
-            sources=['src/aiolo/utils.pyx'],
+            'aiolo.types',
+            sources=['src/aiolo/types.pyx'],
             libraries=['lo'],
         ),
     ],

@@ -2,7 +2,6 @@
 
 from . cimport lo
 from . cimport messages
-from . cimport timetags
 
 
 cdef class Bundle:
@@ -11,6 +10,3 @@ cdef class Bundle:
     cdef list msgs
 
     cpdef void add_message(Bundle self, messages.Message message)
-
-
-cdef lo.lo_bundle bundle_new(timetags.TimeTag timetag)

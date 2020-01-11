@@ -3,7 +3,7 @@
 import asyncio
 from typing import Union, Iterable
 
-from . import exceptions, logs, utils
+from . import exceptions, logs, types
 
 
 class Route:
@@ -15,7 +15,7 @@ class Route:
         if isinstance(path, bytes):
             path = path.decode('utf8')
         self.path = path
-        lotypes = utils.ensure_lotypes(lotypes)
+        lotypes = types.ensure_lotypes(lotypes)
         self.lotypes = lotypes.decode('utf8')
         self.subs = []
 

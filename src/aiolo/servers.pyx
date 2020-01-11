@@ -6,7 +6,7 @@ from typing import Union, Iterable
 from cpython.ref cimport Py_INCREF, Py_DECREF
 
 from . import exceptions, logs, routes
-from . cimport lo, utils
+from . cimport lo, types
 
 
 cdef class Server:
@@ -77,7 +77,7 @@ cdef class Server:
         else:
             route = None
             path = path_or_route
-            lotypes = utils.ensure_lotypes(lotypes)
+            lotypes = types.ensure_lotypes(lotypes)
         key = route_key(path, lotypes)
         try:
             return self.routing[key]
@@ -97,7 +97,7 @@ cdef class Server:
             lotypes = path_or_route.lotypes
         else:
             path = path_or_route
-            lotypes = utils.ensure_lotypes(lotypes)
+            lotypes = types.ensure_lotypes(lotypes)
         key = route_key(path, lotypes)
         try:
             route = self.routing[key]
@@ -160,7 +160,7 @@ cdef int router(
     with gil:
         route = <object>_route
         try:
-            data = utils.lomessage_to_pyargs(lotypes, argv, argc)
+            data = types.lomessage_to_pyargs(lotypes, argv, argc)
         except Exception as exc:
             logs.logger.exception(exc)
             route.pub(exc)

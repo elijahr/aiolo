@@ -19,7 +19,7 @@ cdef class Bundle:
         if isinstance(timetag, datetime.datetime):
             timetag = timetags.TimeTag.from_datetime(timetag)
         self.timetag = timetag
-        self.lo_bundle = bundle_new(timetag)
+        self.lo_bundle = lo.lo_bundle_new((<timetags.TimeTag>timetag).lo_timetag)
         if self.lo_bundle is NULL:
             raise MemoryError
         self.msgs = []
@@ -44,7 +44,3 @@ cdef class Bundle:
 
     def __dealloc__(self):
         lo.lo_bundle_free(self.lo_bundle)
-
-
-cdef lo.lo_bundle bundle_new(timetags.TimeTag timetag):
-    return lo.lo_bundle_new(timetag.lo_timetag)

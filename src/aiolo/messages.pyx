@@ -3,7 +3,7 @@
 
 from . cimport lo
 from . import routes
-from . cimport utils
+from . cimport types
 
 
 cdef class Message:
@@ -18,4 +18,4 @@ cdef class Message:
         return 'Message(%r, *%r)' % (self.route, self.data)
 
     cdef lo.lo_message lo_message(self):
-        return utils.pyargs_to_lomessage(self.route.lotypes, self.data)
+        return types.pyargs_to_lomessage(self.route.lotypes, self.data)

@@ -3,7 +3,6 @@
 from typing import Iterable, Union
 
 from . cimport lo
-from . cimport timetags
 
 # 32 bit signed integer.
 cpdef char LO_INT32
@@ -43,4 +42,4 @@ cdef lo.lo_message pyargs_to_lomessage(object lotypes, object args)
 
 cdef object lomessage_to_pyargs(char * lotypes, lo.lo_arg ** argv, int argc)
 
-cdef int message_add_timetag(lo.lo_message lo_message, timetags.TimeTag timetag)
+cdef int timestamp_from_lo_timetag(lo.lo_timetag lo_timetag)
