@@ -20,7 +20,7 @@ matrix:
       env: DEBIAN_FRONTEND=noninteractive
       python: "3.7"
     - os: linux
-      env: DEBIAN_FRONTEND=noninteractive
+      env: DEBIAN_FRONTEND=noninteractive RELEASER=1
       python: "3.8"
     - os: linux
       python: "pypy3"
