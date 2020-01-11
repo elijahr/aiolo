@@ -12,17 +12,12 @@ To use (install the requirements):
 import asyncio
 import multiprocessing
 import os
-import random
 import time
 import warnings
+import wave
 
 import aiolo
-import numpy as np
 import pyaudio
-import scipy.io.wavfile
-import scipy.signal
-
-ESC = '\x1b'
 
 PATH = os.path.dirname(os.path.abspath(__file__))
 
@@ -35,13 +30,13 @@ BPS = BPM / 60
 STEP = 4 / 16 * (60 / BPM)
 FRAMES_PER_STEP = int(RATE * STEP)
 
-KICK = aiolo.Route('/kick', 'f')
-C_HAT = aiolo.Route('/c_hat', 'f')
-O_HAT = aiolo.Route('/o_hat', 'f')
-SNARE = aiolo.Route('/snare', 'f')
-CLAP = aiolo.Route('/clap', 'f')
-COWBELL = aiolo.Route('/cowbell', 'f')
-AIRHORN = aiolo.Route('/airhorn', 'f')
+KICK = aiolo.Route('/kick', 'T')
+C_HAT = aiolo.Route('/c_hat', 'T')
+O_HAT = aiolo.Route('/o_hat', 'T')
+SNARE = aiolo.Route('/snare', 'T')
+CLAP = aiolo.Route('/clap', 'T')
+COWBELL = aiolo.Route('/cowbell', 'T')
+AIRHORN = aiolo.Route('/airhorn', 'T')
 EXIT = aiolo.Route('/exit', 'T')
 
 SEQUENCE = ((
@@ -86,9 +81,9 @@ class Machine:
         self.loop = asyncio.get_event_loop()
         asyncio.set_event_loop(self.loop)
         self.server = aiolo.Server(url=OSC_SERVER)
-        self.server.add_route(EXIT)
+        self.server.route(EXIT)
         for route in ROUTES.keys():
-            self.server.add_route(route)
+            self.server.route(route)
         self.subs = {
             route: route.sub()
             for route in ROUTES.keys()
@@ -99,7 +94,6 @@ class Machine:
             channels=1,
             rate=RATE,
             output=True)
-        self.seqlock = asyncio.Lock(loop=self.loop)
 
     def run(self):
         self.server.start()
@@ -109,11 +103,11 @@ class Machine:
 
     async def serve(self):
         await asyncio.gather(*[
-                                  self.loop.create_task(self.sub_drum(route, sub))
-                                  for route, sub in self.subs.items()
-                              ] + [
-                                  self.loop.create_task(self.sub_exit())
-                              ])
+            self.loop.create_task(self.sub_drum(route, sub))
+            for route, sub in self.subs.items()
+        ] + [
+            self.loop.create_task(self.sub_exit())
+        ])
 
     async def sub_exit(self):
         async for _ in EXIT.sub():
@@ -127,12 +121,17 @@ class Machine:
 
     async def sub_drum(self, route, sub):
         filepath = ROUTES[route]
-        samplerate, wav = scipy.io.wavfile.read(filepath)
-        async for (ratio,) in sub:
+        wav = wave.open(filepath)
+        data = b''
+        while True:
+            chunk = wav.readframes(1024)
+            if not chunk:
+                break
+            data += chunk
+        data = data[:FRAMES_PER_STEP]
+        async for _ in sub:
             # sub will yield anytime it receives a trigger
-            data = scipy.signal.resample(wav, int(len(wav) * ratio))
-            data = data[:FRAMES_PER_STEP] / 10
-            self.stream.write(data.astype(np.int16))
+            self.stream.write(data)
 
 
 def subscribe():
@@ -148,24 +147,18 @@ def publish():
     client = aiolo.Client(url=OSC_SERVER)
     try:
         for i, route in enumerate(SEQUENCE):
-            if route == COWBELL:
-                # pitch variance for cowbell
-                ratio = random.uniform(0.5, 3.2)
-            else:
-                ratio = 1.0
-            client.pubm(aiolo.Message(route, ratio))
+            client.pubm(aiolo.Message(route, True))
             time.sleep(STEP)
     finally:
-        client.pubm(aiolo.Message(EXIT, [True]))
+        client.pubm(aiolo.Message(EXIT, True))
 
 
 def config_logging():
     import logging
-    from aiolo.logs import logger
     ch = logging.StreamHandler()
     ch.setLevel(logging.DEBUG)
-    logger.addHandler(ch)
-    logger.setLevel(logging.DEBUG)
+    aiolo.logger.addHandler(ch)
+    aiolo.logger.setLevel(logging.DEBUG)
 
 
 def main():

@@ -1,16 +1,10 @@
 # cython: language_level=3
 
-import asyncio
 import datetime
 from typing import Union, Iterable
 
-from . cimport bundles
-from . import exceptions
-from . cimport lo
-from . import logs
-from . cimport messages
-from . cimport routes
-from . cimport timetags
+from . cimport bundles, lo, messages, timetags
+from . import exceptions, logs, routes
 
 
 cdef class Client:

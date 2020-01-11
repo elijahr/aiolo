@@ -5,13 +5,8 @@ import socket
 from typing import Union, Iterable
 from cpython.ref cimport Py_INCREF, Py_DECREF
 
-from libc.stdio cimport printf, fflush, stdout
-
-from . import exceptions
-from . cimport lo
-from . import logs
-from . cimport routes
-from . cimport utils
+from . import exceptions, logs, routes
+from . cimport lo, utils
 
 
 cdef class Server:
@@ -69,23 +64,40 @@ cdef class Server:
         self.sock = None
         logs.logger.debug('%r: stopped', self)
 
-    def route(self, path: str, lotypes: Union[str, bytes, Iterable] = None) -> routes.Route:
+    def route(self, path_or_route: Union[str, routes.Route], lotypes: Union[str, bytes, Iterable] = None) -> routes.Route:
         """
         Create a route for this server
         """
-        lotypes = utils.ensure_lotypes(lotypes)
+        if isinstance(path_or_route, routes.Route):
+            if lotypes:
+                raise ValueError("Cannot provide route and lotypes together")
+            route = path_or_route
+            path = route.path
+            lotypes = route.lotypes
+        else:
+            route = None
+            path = path_or_route
+            lotypes = utils.ensure_lotypes(lotypes)
         key = route_key(path, lotypes)
         try:
             return self.routing[key]
         except KeyError:
-            route = routes.Route(path, lotypes)
+            if route is None:
+                route = routes.Route(path, lotypes)
             if self.running:
                 self._add_route_method(route)
             self.routing[key] = route
             return route
 
-    def unroute(self, path: str, lotypes: Union[str, bytes, Iterable] = None) -> None:
-        lotypes = utils.ensure_lotypes(lotypes)
+    def unroute(self, path_or_route: Union[str, routes.Route], lotypes: Union[str, bytes, Iterable] = None) -> None:
+        if isinstance(path_or_route, routes.Route):
+            if lotypes:
+                raise ValueError("Cannot provide route and lotypes together")
+            path = path_or_route.path
+            lotypes = path_or_route.lotypes
+        else:
+            path = path_or_route
+            lotypes = utils.ensure_lotypes(lotypes)
         key = route_key(path, lotypes)
         try:
             route = self.routing[key]
@@ -145,10 +157,8 @@ cdef int router(
     lo.lo_message raw_msg,
     void *_route
 ) nogil:
-    printf('WHATUP MY HOMIES\n')
-    fflush(stdout)
     with gil:
-        route = <routes.Route>_route
+        route = <object>_route
         try:
             data = utils.lomessage_to_pyargs(lotypes, argv, argc)
         except Exception as exc:

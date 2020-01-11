@@ -18,14 +18,13 @@ import asyncio
 import unittest
 
 import aiolo
-from aiolo.logs import logger
-from aiolo import utils
+from aiolo import aio
 
 ch = logging.StreamHandler()
 ch.setLevel(logging.DEBUG)
 
-logger.addHandler(ch)
-logger.setLevel(logging.DEBUG)
+aiolo.logger.addHandler(ch)
+aiolo.logger.setLevel(logging.DEBUG)
 
 logging.getLogger('asyncio').addHandler(ch)
 logging.getLogger('asyncio').setLevel(logging.DEBUG)
@@ -98,7 +97,7 @@ class AIOLoTestCase(unittest.TestCase):
             ]
         )
         server.start()
-        task = utils.create_task(self.sub(route.sub(), 3))
+        task = aio.create_task(self.sub(route.sub(), 3))
         for i in range(1, 4):
             client.pub(
                 route,
@@ -143,8 +142,8 @@ class AIOLoTestCase(unittest.TestCase):
         foo = server.route('/foo', 's')
         server.start()
         tasks = asyncio.gather(
-            utils.create_task(self.sub(foo.sub(), 1)),
-            utils.create_task(self.sub(foo.sub(), 1)),
+            aio.create_task(self.sub(foo.sub(), 1)),
+            aio.create_task(self.sub(foo.sub(), 1)),
         )
         client.pub(foo, 'bar')
         self.results = list(await tasks)
@@ -162,9 +161,9 @@ class AIOLoTestCase(unittest.TestCase):
         baz = server.route('/baz', 's')
         server.start()
         tasks = asyncio.gather(
-            utils.create_task(self.sub(foo.sub(), 1)),
-            utils.create_task(self.sub(bar.sub(), 1)),
-            utils.create_task(self.sub(baz.sub(), 1)),
+            aio.create_task(self.sub(foo.sub(), 1)),
+            aio.create_task(self.sub(bar.sub(), 1)),
+            aio.create_task(self.sub(baz.sub(), 1)),
         )
         client.bundle([
             aiolo.Message(foo, 'foo'),

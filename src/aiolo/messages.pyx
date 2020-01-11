@@ -2,7 +2,7 @@
 
 
 from . cimport lo
-from . cimport routes
+from . import routes
 from . cimport utils
 
 

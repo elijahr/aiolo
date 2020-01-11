@@ -3,9 +3,9 @@
 import datetime
 from typing import Iterable, Union
 
+from . cimport timetags
 from . cimport messages
 from . cimport lo
-from . cimport timetags
 
 
 cdef class Bundle:

@@ -1,50 +1,48 @@
 # cython: language_level=3
-import asyncio
+
 import datetime
-import sys
 from typing import Union, Iterable
 
 from libc.stdint cimport uint64_t, uint32_t, int32_t, int64_t, uint8_t, INT32_MAX, INT64_MAX
 from libc.stdlib cimport malloc, free
 
-from . cimport lo
+from . cimport lo, timetags
 from . import midis
-from . cimport timetags
 
 # Below are defined in lo_osc_types.h
 
 # basic OSC types
 # 32 bit signed integer.
-cdef char LO_INT32 = b'i'
+cpdef char LO_INT32 = b'i'
 # 32 bit IEEE-754 float.
-cdef char LO_FLOAT = b'f'
+cpdef char LO_FLOAT = b'f'
 # Standard C, NULL terminated string.
-cdef char LO_STRING = b's'
+cpdef char LO_STRING = b's'
 # OSC binary blob type. Accessed using the lo_blob_*() functions.
-cdef char LO_BLOB = b'b'
+cpdef char LO_BLOB = b'b'
 
 # extended OSC types
 # 64 bit signed integer.
-cdef char LO_INT64 = b'h'
+cpdef char LO_INT64 = b'h'
 # OSC TimeTag type, represented by the lo_timetag structure.
-cdef char LO_TIMETAG = b't'
+cpdef char LO_TIMETAG = b't'
 # 64 bit IEEE-754 double.
-cdef char LO_DOUBLE = b'd'
+cpdef char LO_DOUBLE = b'd'
 # Standard C, NULL terminated, string. Used in systems which
 # distinguish strings and symbols.
-cdef char LO_SYMBOL = b'S'
+cpdef char LO_SYMBOL = b'S'
 # Standard C, 8 bit, char variable.
-cdef char LO_CHAR = b'c'
+cpdef char LO_CHAR = b'c'
 # A 4 byte MIDI packet.
-cdef char LO_MIDI = b'm'
+cpdef char LO_MIDI = b'm'
 # Symbol representing the value True.
-cdef char LO_TRUE = b'T'
+cpdef char LO_TRUE = b'T'
 # Symbol representing the value False.
-cdef char LO_FALSE = b'F'
+cpdef char LO_FALSE = b'F'
 # Symbol representing the value Nil.
-cdef char LO_NIL = b'N'
+cpdef char LO_NIL = b'N'
 # Symbol representing the value Infinitum.
-cdef char LO_INFINITUM = b'I'
+cpdef char LO_INFINITUM = b'I'
 
 
 INFINITY = float('inf')
@@ -220,7 +218,7 @@ cdef object lomessage_to_pyargs(char * lotypes, lo.lo_arg ** argv, int argc):
         elif lotypes[i] == LO_INT64:
             data.append(arg.i64)
         elif lotypes[i] == LO_TIMETAG:
-            timestamp = timestamp_from_lo_timetag(<lo.lo_timetag>arg.t)
+            timestamp = timetags.timestamp_from_lo_timetag(<lo.lo_timetag>arg.t)
             data.append(timetags.TimeTag(timestamp))
         elif lotypes[i] == LO_DOUBLE:
             data.append(arg.f)
@@ -245,24 +243,6 @@ cdef object lomessage_to_pyargs(char * lotypes, lo.lo_arg ** argv, int argc):
     return data
 
 
-cdef int timestamp_from_lo_timetag(lo.lo_timetag lo_timetag):
-    return lo_timetag.sec + ((<float>lo_timetag.frac) * (1/2**32))
-
-
 cdef int message_add_timetag(lo.lo_message lo_message, timetags.TimeTag timetag):
     return lo.lo_message_add_timetag(lo_message, timetag.lo_timetag)
 
-
-cpdef create_task(object coro):
-    if sys.version_info[:2] >= (3, 8):
-        task = asyncio.create_task(coro)
-    else:
-        task = asyncio.get_running_loop().create_task(coro)
-    return task
-
-
-cpdef run_coro(coro):
-    if sys.version_info[:2] >= (3, 7):
-        return asyncio.run(coro)
-    else:
-        return asyncio.get_event_loop().run_until_complete(coro)

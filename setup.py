@@ -48,10 +48,6 @@ setup(
             libraries=['lo'],
         ),
         Extension(
-            'aiolo.routes',
-            sources=['src/aiolo/routes.pyx'],
-        ),
-        Extension(
             'aiolo.servers',
             sources=['src/aiolo/servers.pyx'],
             libraries=['lo'],
@@ -71,9 +67,6 @@ setup(
     extras_require={
         'dev': [
             'pyaudio',
-            'uvloop',
-            'scipy',
-            'numpy',
         ]
     },
     classifiers=[
