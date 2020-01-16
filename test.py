@@ -1,187 +1,251 @@
-import datetime
-import logging
-
-import faulthandler
-import sys
-
-faulthandler.enable(all_threads=True)
-
-try:
-    import tracemalloc
-except ImportError:
-    # Not available in pypy
-    pass
-else:
-    tracemalloc.start()
-
 import asyncio
-import unittest
+import sys
+from typing import Union
 
 import aiolo
-from aiolo import aio
+import pytest
 
-ch = logging.StreamHandler()
-ch.setLevel(logging.DEBUG)
-
-aiolo.logger.addHandler(ch)
-aiolo.logger.setLevel(logging.DEBUG)
-
-logging.getLogger('asyncio').addHandler(ch)
-logging.getLogger('asyncio').setLevel(logging.DEBUG)
+from test_data import TYPE_TEST_DATA
 
 
-EPOCH = datetime.datetime.utcfromtimestamp(0)
+def create_task(coro):
+    if sys.version_info[:2] >= (3, 7):
+        task = asyncio.create_task(coro)
+    else:
+        task = asyncio.get_event_loop().create_task(coro)
+    return task
 
 
-class AIOLoTestCase(unittest.TestCase):
-    def setUp(self):
-        self.maxDiff = 3600
-        self.loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(self.loop)
-        self.loop.set_debug(True)
-        self.results = []
-
-    def tearDown(self) -> None:
-        self.loop.close()
-
-    def test_types(self):
-        self.loop.run_until_complete(self._test_types())
-        self.assertListEqual(self.results, [
-            [1, '1', '1', b'1', b'\x01', b'1', 1000000000000000000, 1000000000000000000,
-             aiolo.TimeTag(1), aiolo.TimeTag(1), aiolo.TimeTag(1), aiolo.TimeTag(1.1),
-             0.0, 0.0,
-             (1, 2, 3, 4), (1, 2, 3, 4), True, True, False, False, None, None, float('inf'), float('inf')],
-            [2, '2', '2', b'2', b'\x02', b'2', 2000000000000000000, 2000000000000000000,
-             aiolo.TimeTag(2), aiolo.TimeTag(2), aiolo.TimeTag(2), aiolo.TimeTag(2.1),
-             0.0, 0.0,
-             (2, 4, 6, 8), (2, 4, 6, 8), True, True, False, False, None, None, float('inf'), float('inf')],
-            [3, '3', '3', b'3', b'\x03', b'3', 3000000000000000000, 3000000000000000000,
-             aiolo.TimeTag(3), aiolo.TimeTag(3), aiolo.TimeTag(3), aiolo.TimeTag(3.1),
-             0.0, 0.0,
-             (3, 6, 9, 12), (3, 6, 9, 12), True, True, False, False, None, None, float('inf'), float('inf')]
-        ])
-
-    async def _test_types(self):
-        server = aiolo.Server(url='osc.tcp://:10000')
-        client = aiolo.Client(url='osc.tcp://:10000')
-        route = server.route(
-            '/foo',
-            [
-                'i',  # LO_INT32
-                # 'f',  # LO_FLOAT
-                str,  # LO_STRING
-                's',  # LO_STRING
-                bytes,  # LO_BLOB
-                bytearray,  # LO_BLOB
-                'b',  # LO_BLOB
-                'h',  # LO_INT64
-                int,  # LO_INT64
-                aiolo.TimeTag,  # LO_TIMETAG
-                datetime.datetime,  # LO_TIMETAG
-                't',  # LO_TIMETAG
-                't',  # LO_TIMETAG
-                float,  # LO_DOUBLE,
-                'd',  # LO_DOUBLE
-                # 'S',  # LO_SYMBOL
-                # 'c',  # LO_CHAR
-                aiolo.Midi,  # LO_MIDI
-                'm',  # LO_MIDI
-                True,  # LO_TRUE
-                'T',  # LO_TRUE
-                False,  # LO_FALSE
-                'F',  # LO_FALSE
-                None,  # LO_NIL
-                'N',  # LO_NIL,
-                float('inf'),  # LO_INFINITUM
-                'I',  # LO_INFINITUM
-            ]
-        )
-        server.start()
-        task = aio.create_task(self.sub(route.sub(), 3))
-        for i in range(1, 4):
-            client.pub(
-                route,
-                i,  # LO_INT32
-                # float(i),  # LO_FLOAT
-                str(i),  # LO_STRING
-                str(i),  # LO_STRING
-                b'%i' % i,  # LO_BLOB
-                bytearray([i]),  # LO_BLOB
-                b'%i' % i,  # LO_BLOB
-                i * 1000000000000000000,  # LO_INT64
-                i * 1000000000000000000,  # LO_INT64
-                aiolo.TimeTag.from_datetime(EPOCH + datetime.timedelta(seconds=i)),  # LO_TIMETAG
-                EPOCH + datetime.timedelta(seconds=i),  # LO_TIMETAG
-                i,  # LO_TIMETAG
-                float(i) + 0.1,  # LO_TIMETAG
-                float(i),  # LO_DOUBLE,
-                float(i),  # LO_DOUBLE
-                # str(i),  # LO_SYMBOL
-                # bytes(i),  # LO_CHAR
-                aiolo.Midi(i, i * 2, i * 3, i * 4),  # LO_MIDI
-                aiolo.Midi(i, i * 2, i * 3, i * 4),  # LO_MIDI
-                True,  # LO_TRUE
-                True,  # LO_TRUE
-                False,  # LO_FALSE
-                False,  # LO_FALSE
-                None,  # LO_NIL
-                None,  # LO_NIL,
-                float('inf'),  # LO_INFINITUM
-                float('inf'),  # LO_INFINITUM
-            )
-        self.results = list(await task)
-        server.stop()
-
-    def test_multiple_subs(self):
-        self.loop.run_until_complete(self._test_multiple_subs())
-        self.assertListEqual(self.results, [[['bar']], [['bar']]])
-
-    async def _test_multiple_subs(self):
-        server = aiolo.Server(url='osc.tcp://:10001')
-        client = aiolo.Client(url='osc.tcp://:10001')
-        foo = server.route('/foo', 's')
-        server.start()
-        tasks = asyncio.gather(
-            aio.create_task(self.sub(foo.sub(), 1)),
-            aio.create_task(self.sub(foo.sub(), 1)),
-        )
-        client.pub(foo, 'bar')
-        self.results = list(await tasks)
-        server.stop()
-
-    def test_bundle(self):
-        self.loop.run_until_complete(self._test_bundle())
-        self.assertListEqual(self.results, [[['foo']], [['bar']], [['baz']]])
-
-    async def _test_bundle(self):
-        server = aiolo.Server(url='osc.tcp://:10002')
-        client = aiolo.Client(url='osc.tcp://:10002')
-        foo = server.route('/foo', 's')
-        bar = server.route('/bar', 's')
-        baz = server.route('/baz', 's')
-        server.start()
-        tasks = asyncio.gather(
-            aio.create_task(self.sub(foo.sub(), 1)),
-            aio.create_task(self.sub(bar.sub(), 1)),
-            aio.create_task(self.sub(baz.sub(), 1)),
-        )
-        client.bundle([
-            aiolo.Message(foo, 'foo'),
-            aiolo.Message(bar, 'bar'),
-            aiolo.Message(baz, 'baz'),
-        ])
-        self.results = list(await tasks)
-        server.stop()
-
-    async def sub(self, sub, count):
-        items = []
-        async for item in sub:
-            items.append(item)
-            if len(items) == count:
-                sub.unsub()
-                break
-        return items
+@pytest.fixture
+def event_loop():
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    loop.set_debug(True)
+    yield loop
+    loop.close()
 
 
-if __name__ == '__main__':
-    unittest.main()
+@pytest.fixture
+def server(event_loop):
+    server = aiolo.Server(url='osc.tcp://:10000')
+    server.start()
+    yield server
+    server.stop()
+
+
+@pytest.fixture
+def client(server):
+    for route in set(server.routing.values()):
+        server.unroute(route)
+    return aiolo.Client(url=server.url)
+
+
+def valid_types_params():
+    for path, test_case in TYPE_TEST_DATA.items():
+        for argdef in test_case['argdefs']:
+            for publish, expected in test_case['valid']:
+                yield path, argdef, publish, expected
+                yield path, [argdef, argdef], [publish, publish], [[expected[0][0], expected[0][0]]]
+                yield path, aiolo.Argdef(argdef), [publish], expected
+
+
+@pytest.mark.parametrize('path, argdef, publish, expected', valid_types_params())
+@pytest.mark.asyncio
+async def test_valid_types(event_loop, server, client, path, argdef, publish, expected):
+    route = server.route(path, argdef)
+    task = create_task(subscribe(route.sub(), 1))
+    client.pub(route, publish)
+    event_loop.call_later(0.05, task.cancel)
+    try:
+        result = await task
+    except asyncio.CancelledError:
+        pytest.fail('%r: argdef=%r, publish=%r, never received data' % (route, argdef, publish))
+    else:
+        msg = '%r: argdef=%r, publish=%r, %r != %r' % (route, argdef, publish, result, expected)
+        assert result == expected, msg
+
+
+def invalid_types_params():
+    for path, test_case in TYPE_TEST_DATA.items():
+        for argdef in test_case['argdefs']:
+            for invalid in test_case['invalid']:
+                yield path, argdef, [invalid]
+                yield path, aiolo.Argdef(argdef), [invalid]
+
+
+@pytest.mark.parametrize('path, argdef, invalid', invalid_types_params())
+@pytest.mark.asyncio
+async def test_invalid_types(server, client, path, argdef, invalid):
+    route = server.route(path, [argdef])
+    with pytest.raises(ValueError):
+        client.pub(route, invalid)
+
+
+@pytest.mark.parametrize('argdef,value', [
+    (float, 42.0),
+    (int, 42),
+    (True, True),
+    (False, False),
+    (None, None),
+])
+def test_guess_argtypes(argdef, value):
+    assert aiolo.guess_argtypes([value]) == bytes(aiolo.Argdef([argdef]))
+
+
+@pytest.mark.asyncio
+async def test_multiple_subs(event_loop, server, client):
+    foo = server.route('/foo', 's')
+    tasks = asyncio.gather(
+        create_task(subscribe(foo.sub(), 1)),
+        create_task(subscribe(foo.sub(), 1)),
+    )
+    event_loop.call_later(0.05, tasks.cancel)
+    client.pub(foo, 'bar')
+    results = list(await tasks)
+    assert results == [[['bar']], [['bar']]]
+
+
+@pytest.mark.asyncio
+async def test_unroute(event_loop, server, client):
+    foo = server.route('/foo', 's')
+    task = create_task(subscribe(foo.sub(), 1))
+    event_loop.call_later(0.05, task.cancel)
+    server.unroute(foo)
+    client.pub(foo, 'bar')
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+
+@pytest.mark.asyncio
+async def test_bundle(event_loop, server, client):
+    routes = [
+        server.route(path, 's')
+        for path in ('/foo', '/bar', '/baz')
+    ]
+    tasks = asyncio.gather(*[
+        create_task(subscribe(route.sub(), 1))
+        for route in routes
+    ])
+    event_loop.call_later(0.05, tasks.cancel)
+    client.bundle([
+        aiolo.Message(route, str(route.path))
+        for route in routes
+    ])
+    results = list(await tasks)
+    assert results == [[['/foo']], [['/bar']], [['/baz']]]
+
+
+@pytest.mark.asyncio
+async def test_bundle_join(event_loop, server, client):
+    foo = server.route('/foo', 's')
+    bar = server.route('/bar', 's')
+    bundle = aiolo.Bundle([aiolo.Message(foo, 'foo')])
+    bundle &= aiolo.Bundle([aiolo.Message(bar, 'bar')])
+    tasks = asyncio.gather(
+        create_task(subscribe(foo.sub(), 1)),
+        create_task(subscribe(bar.sub(), 1)),
+    )
+    client.bundle(bundle)
+    event_loop.call_later(0.05, tasks.cancel)
+    results = list(await tasks)
+    assert results == [[['foo']], [['bar']]]
+
+
+@pytest.mark.asyncio
+async def test_route_pattern(event_loop, server, client):
+    foo = server.route('/foo', 's')
+    bar = server.route('/bar', 's')
+    tasks = asyncio.gather(
+        create_task(subscribe(foo.sub(), 1)),
+        create_task(subscribe(bar.sub(), 1)),
+    )
+    event_loop.call_later(0.05, tasks.cancel)
+    wildcard = aiolo.Route('/[a-z]*', 's')
+    client.pub(wildcard, ['baz'])
+    results = list(await tasks)
+    assert results == [[['baz']], [['baz']]]
+
+
+@pytest.mark.asyncio
+async def test_route_join(event_loop, server, client):
+    foo = server.route('/foo', 's')
+    bar = server.route('/bar', 's')
+    baz = server.route('/baz', 's')
+    spaz = server.route('/spaz', 's')
+    tasks = asyncio.gather(
+        create_task(subscribe(foo.sub(), 1)),
+        create_task(subscribe(bar.sub(), 1)),
+        create_task(subscribe(baz.sub(), 1)),
+        create_task(subscribe(spaz.sub(), 1)),
+    )
+    event_loop.call_later(0.05, tasks.cancel)
+    route = foo & bar
+    assert route.is_pattern
+    route &= baz
+    route &= spaz
+    assert route.is_pattern
+    client.pub(route, 'hello')
+    results = list(await tasks)
+    assert results == [[['hello']], [['hello']], [['hello']], [['hello']]]
+
+
+def test_cannot_serve_pattern(server):
+    with pytest.raises(ValueError):
+        server.route('/[a-z]*', 's')
+    with pytest.raises(ValueError):
+        server.route(aiolo.Route('/[a-z]*', 's'))
+
+
+@pytest.mark.asyncio
+async def test_any_path(event_loop, server, client):
+    any_path = server.route(aiolo.ANY_PATH, 's')
+    task = create_task(subscribe(any_path.sub(), 1))
+    event_loop.call_later(0.05, task.cancel)
+    with pytest.raises(ValueError):
+        client.pub(any_path, ['foo'])
+    client.pub(aiolo.Route('/foo', 's'), ['foo'])
+    results = list(await task)
+    assert results == [['foo']]
+
+
+@pytest.mark.asyncio
+async def test_no_args(event_loop, server, client):
+    foo = server.route('/foo', aiolo.NO_ARGS)
+    task = create_task(subscribe(foo.sub(), 1))
+    event_loop.call_later(0.05, task.cancel)
+    client.pub(foo)
+    results = list(await task)
+    assert results == [[]]
+
+
+@pytest.mark.asyncio
+async def test_any_args(event_loop, server, client):
+    foo = server.route('/foo', aiolo.ANY_ARGS)
+    task = create_task(subscribe(foo.sub(), 1))
+    event_loop.call_later(0.05, task.cancel)
+    client.pub(foo, 'foo')
+    results = list(await task)
+    assert results == [['foo']]
+
+
+@pytest.mark.asyncio
+async def test_sub_join(event_loop, server, client):
+    foo = server.route('/foo', 's')
+    bar = server.route('/bar', 's')
+    sub = foo.sub() | bar.sub()
+    task = create_task(subscribe(sub, 2))
+    event_loop.call_later(0.1, task.cancel)
+    client.pub(foo, 'foo')
+    client.pub(bar, 'bar')
+    results = list(await task)
+    assert sorted(results) == [['bar'], ['foo']]
+
+
+async def subscribe(sub: Union[aiolo.Sub, aiolo.Subs], count: int):
+    items = []
+    async for item in sub:
+        items.append(item)
+        if len(items) == count:
+            sub.unsub()
+            break
+    return items

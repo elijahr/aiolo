@@ -1,18 +1,17 @@
 #!/usr/bin/env python -W ignore::DeprecationWarning
 
 """
-boomboom: laptop keyboard drum machine
+drum_machine: a simple drum machine
 
 To use (install the requirements):
 
-    $ pipenv install aiolo[dev]
-    $ python boomboom.py
+    $ pipenv install aiolo[examples]
+    $ python drum_machine.py
 
 """
 import asyncio
 import multiprocessing
 import os
-import time
 import warnings
 import wave
 
@@ -25,19 +24,18 @@ OSC_SERVER = 'osc.udp://:10033'
 
 RATE = 44100
 BPM = 120
-BPS = BPM / 60
 # 16th note
 STEP = 4 / 16 * (60 / BPM)
 FRAMES_PER_STEP = int(RATE * STEP)
 
-KICK = aiolo.Route('/kick', 'T')
-C_HAT = aiolo.Route('/c_hat', 'T')
-O_HAT = aiolo.Route('/o_hat', 'T')
-SNARE = aiolo.Route('/snare', 'T')
-CLAP = aiolo.Route('/clap', 'T')
-COWBELL = aiolo.Route('/cowbell', 'T')
-AIRHORN = aiolo.Route('/airhorn', 'T')
-EXIT = aiolo.Route('/exit', 'T')
+KICK = aiolo.Route('/kick', aiolo.TIMETAG)
+C_HAT = aiolo.Route('/c_hat', aiolo.TIMETAG)
+O_HAT = aiolo.Route('/o_hat', aiolo.TIMETAG)
+SNARE = aiolo.Route('/snare', aiolo.TIMETAG)
+CLAP = aiolo.Route('/clap', aiolo.TIMETAG)
+COWBELL = aiolo.Route('/cowbell', aiolo.TIMETAG)
+AIRHORN = aiolo.Route('/airhorn', aiolo.TIMETAG)
+EXIT = aiolo.Route('/exit', aiolo.TIMETAG)
 
 SEQUENCE = ((
     KICK, C_HAT, O_HAT, C_HAT,
@@ -68,11 +66,15 @@ SEQUENCE = ((
     KICK, CLAP, O_HAT, COWBELL,
     KICK, C_HAT, CLAP, SNARE,
     KICK, CLAP, O_HAT, COWBELL,
-) * 4)
+) * 4) + (EXIT, )
 
-ROUTES = {
+
+DRUM_ROUTES = (KICK, C_HAT, O_HAT, SNARE, CLAP, COWBELL, AIRHORN)
+
+
+WAVS_BY_ROUTE = {
     route: os.path.join(PATH, 'drums%s.wav' % route.path)
-    for route in (KICK, C_HAT, O_HAT, SNARE, CLAP, COWBELL, AIRHORN)
+    for route in DRUM_ROUTES
 }
 
 
@@ -82,12 +84,10 @@ class Machine:
         asyncio.set_event_loop(self.loop)
         self.server = aiolo.Server(url=OSC_SERVER)
         self.server.route(EXIT)
-        for route in ROUTES.keys():
+        self.subs = {}
+        for route in DRUM_ROUTES:
             self.server.route(route)
-        self.subs = {
-            route: route.sub()
-            for route in ROUTES.keys()
-        }
+            self.subs[route] = route.sub()
         self.pyaudio = pyaudio.PyAudio()
         self.stream = self.pyaudio.open(
             format=pyaudio.paInt16,
@@ -110,28 +110,39 @@ class Machine:
         ])
 
     async def sub_exit(self):
-        async for _ in EXIT.sub():
-            for sub in self.subs.values():
-                sub.unsub()
+        async for (timetag, ) in EXIT.sub():
+            self.loop.call_at(timetag.timestamp, self.exit)
             break
+
+    def exit(self):
+        for sub in self.subs.values():
+            sub.unsub()
 
         self.stream.stop_stream()
         self.stream.close()
         self.pyaudio.terminate()
 
     async def sub_drum(self, route, sub):
-        filepath = ROUTES[route]
-        wav = wave.open(filepath)
-        data = b''
-        while True:
-            chunk = wav.readframes(1024)
-            if not chunk:
-                break
-            data += chunk
-        data = data[:FRAMES_PER_STEP]
-        async for _ in sub:
+        wav = get_wav(route)
+
+        def play():
+            self.stream.write(wav)
+
+        async for (timetag, ) in sub:
             # sub will yield anytime it receives a trigger
-            self.stream.write(data)
+            self.loop.call_at(timetag.timestamp, play)
+
+
+def get_wav(route):
+    filepath = WAVS_BY_ROUTE[route]
+    f = wave.open(filepath)
+    wav = b''
+    while True:
+        chunk = f.readframes(1024)
+        if not chunk:
+            break
+        wav += chunk
+    return wav[:FRAMES_PER_STEP]
 
 
 def subscribe():
@@ -142,15 +153,13 @@ def subscribe():
 
 
 def publish():
-    # Give the server some time to start
-    time.sleep(0.25)
+    timetag = aiolo.TimeTag(asyncio.get_event_loop().time()+5)
     client = aiolo.Client(url=OSC_SERVER)
-    try:
-        for i, route in enumerate(SEQUENCE):
-            client.pubm(aiolo.Message(route, True))
-            time.sleep(STEP)
-    finally:
-        client.pubm(aiolo.Message(EXIT, True))
+    # send the sequence as a timestamped bundle
+    client.bundle(
+        aiolo.Message(route, timetag + (STEP * i))
+        for i, route in enumerate(SEQUENCE)
+    )
 
 
 def config_logging():

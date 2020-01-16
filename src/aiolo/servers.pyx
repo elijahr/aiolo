@@ -2,11 +2,12 @@
 
 import asyncio
 import socket
-from typing import Union, Iterable
+
 from cpython.ref cimport Py_INCREF, Py_DECREF
 
-from . import exceptions, logs, routes
-from . cimport lo, types
+
+from . import exceptions, logs, routes, typedefs
+from . cimport argdefs, lo, paths
 
 
 cdef class Server:
@@ -19,8 +20,11 @@ cdef class Server:
         pass
 
     def __dealloc__(self):
-        if self.lo_server is not NULL:
-            lo.lo_server_free(self.lo_server)
+        # objects are retained by no_gc_clear so that we can properly
+        # cleanup the socket and stolen route references when this
+        # instance is garbage collected
+        if self.running:
+            self.stop()
 
     def __repr__(self):
         return 'Server(%r)' % self.url
@@ -43,12 +47,12 @@ cdef class Server:
             raise MemoryError
 
         for route in self.routing.values():
-            self._add_route_method(route)
+            self._add_route(route)
 
         self.sock = socket.socket(fileno=lo.lo_server_get_socket_fd(self.lo_server))
         loop = asyncio.get_event_loop()
         loop.add_reader(self.sock, self._on_sock_ready)
-        logs.logger.debug('%r: started', self)
+        logs.logger.debug('%r: started, listening on %r', self, loop)
 
     def stop(self):
         if not self.running:
@@ -64,49 +68,52 @@ cdef class Server:
         self.sock = None
         logs.logger.debug('%r: stopped', self)
 
-    def route(self, path_or_route: Union[str, routes.Route], lotypes: Union[str, bytes, Iterable] = None) -> routes.Route:
+    def route(self, route: routes.RouteTypes, argdef: typedefs.ArgdefTypes = None) -> routes.Route:
         """
         Create a route for this server
         """
-        if isinstance(path_or_route, routes.Route):
-            if lotypes:
-                raise ValueError("Cannot provide route and lotypes together")
-            route = path_or_route
-            path = route.path
-            lotypes = route.lotypes
+        if isinstance(route, routes.Route):
+            if argdef:
+                raise ValueError("Cannot provide route and argtypes together")
+            path = <paths.Path>route.path
+            argdef = <argdefs.Argdef>route.argdef
         else:
+            path = paths.Path(route)
+            argdef = argdefs.Argdef(argdef)
             route = None
-            path = path_or_route
-            lotypes = types.ensure_lotypes(lotypes)
-        key = route_key(path, lotypes)
+        key = route_key(path, argdef)
         try:
             return self.routing[key]
         except KeyError:
             if route is None:
-                route = routes.Route(path, lotypes)
+                route = routes.Route(path, argdef)
+            if route.is_pattern:
+                raise ValueError('Cannot add pattern route %r as method definition' % route)
             if self.running:
-                self._add_route_method(route)
+                self._add_route(route)
             self.routing[key] = route
             return route
 
-    def unroute(self, path_or_route: Union[str, routes.Route], lotypes: Union[str, bytes, Iterable] = None) -> None:
-        if isinstance(path_or_route, routes.Route):
-            if lotypes:
-                raise ValueError("Cannot provide route and lotypes together")
-            path = path_or_route.path
-            lotypes = path_or_route.lotypes
+    def unroute(self, route: routes.RouteTypes, argdef: typedefs.ArgdefTypes = None) -> routes.Route:
+        if isinstance(route, routes.Route):
+            if argdef:
+                raise ValueError("Cannot provide route and argdef together")
+            path = <paths.Path>route.path
+            argdef = <argdefs.Argdef>route.argdef
         else:
-            path = path_or_route
-            lotypes = types.ensure_lotypes(lotypes)
-        key = route_key(path, lotypes)
+            path = paths.Path(route)
+            argdef = argdefs.Argdef(argdef)
+            route = None
+        key = route_key(path, argdef)
         try:
             route = self.routing[key]
         except KeyError:
-            return None
+            pass
         else:
             del self.routing[key]
             if self.running:
-                self._del_route_method(route)
+                self._del_route(route)
+        return route
 
     def _on_sock_ready(self):
         logs.logger.debug('%r: incoming data on socket', self)
@@ -116,54 +123,62 @@ cdef class Server:
                 break
             logs.logger.debug('%r: processed %r bytes', self, count)
 
-    def _add_route_method(self, route: routes.Route):
+    def _add_route(self, route: routes.Route):
+        cdef:
+            char * path = (<paths.Path>route.path).charp()
+            char * argdef = (<argdefs.Argdef>route.argdef).charp()
+        # Steal a ref
         Py_INCREF(route)
         lo.lo_server_add_method(
             self.lo_server,
-            route.bpath,
-            route.blotypes,
+            path,
+            argdef,
             <lo.lo_method_handler>router,
             <void*>route)
+        logs.logger.debug('%r: added route %r' % (self, route))
 
-    def _del_route_method(self, route: routes.Route):
-        lo.lo_server_del_method(self.lo_server, route.bpath, route.blotypes)
+    def _del_route(self, route: routes.Route):
+        cdef:
+            char * path = (<paths.Path>route.path).charp()
+            char * argdef = (<argdefs.Argdef>route.argdef).charp()
+        lo.lo_server_del_method(
+            self.lo_server,
+            path,
+            argdef,
+        )
         # Unsteal the ref
         Py_DECREF(route)
+        logs.logger.debug('%r: removed route %r' % (self, route))
 
 
-def route_key(path: Union[str, bytes], lotypes: Union[str, bytes]) -> bytes:
-    if isinstance(path, str):
-        path = path.encode('utf8')
-    if isinstance(lotypes, str):
-        lotypes = lotypes.encode('utf8')
-    return _route_key(path, lotypes)
+def route_key(path: paths.Path, argdef: argdefs.Argdef):
+    return '%r:%r' % (path, argdef)
 
 
-def _route_key(path: bytes, lotypes: bytes):
-    return b'%s:%s' % (path, lotypes)
-
-
-cdef void on_error(int num, const char *cmsg, const char *cpath) nogil:
+cdef void on_error(int num, const char *msg, const char *path) nogil:
     with gil:
-        msg = (<bytes>cmsg).decode('utf8')
-        logs.logger.error("liblo server error %s: %s" % (num, msg))
+        m = (<bytes>msg)
+        m = m.decode('utf8')
+        logs.logger.error("liblo server error %s: %s" % (num, m))
 
 
 cdef int router(
     const char *path,
-    const char *lotypes,
+    const char *argtypes,
     lo.lo_arg ** argv,
     int argc,
     lo.lo_message raw_msg,
     void *_route
-) nogil:
+) nogil except 1:
+    cdef int retval = 0
     with gil:
         route = <object>_route
         try:
-            data = types.lomessage_to_pyargs(lotypes, argv, argc)
-        except Exception as exc:
-            logs.logger.exception(exc)
-            route.pub(exc)
-        else:
+            data = argdefs.Argdef(argtypes).unpack_args(argv, argc)
             logs.logger.debug('%r: received message %r', route, data)
             route.pub(data)
+        except BaseException as exc:
+            logs.logger.exception(exc)
+            retval = 1
+            raise
+    return retval

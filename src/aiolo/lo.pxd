@@ -274,7 +274,7 @@ cdef extern from "lo/lo.h" nogil:
 
     uint32_t lo_blobsize(lo_blob b)
 
-    int lo_pattern_match(char* str, char* p)
+    int lo_pattern_match(char* string, char* pattern)
 
     double lo_timetag_diff(lo_timetag a, lo_timetag b)
 

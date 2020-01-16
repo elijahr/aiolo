@@ -65,7 +65,7 @@ install:
         fi
         pipenv install --python "$PYTHON_PATH" --skip-lock;
       fi
-  - pipenv run python setup.py install
+  - pipenv run pip install --editable ".[test]"
 
 script:
   - pipenv run python test.py

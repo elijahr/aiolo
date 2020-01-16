@@ -1,4 +1,5 @@
 src/aiolo/*.c
+src/aiolo/*.h
 dist/
 build/
 *.egg-info
@@ -6,3 +7,4 @@ build/
 Pipfile*
 .DS_Store
 .eggs/
+.cache/

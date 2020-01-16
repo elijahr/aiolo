@@ -1,5 +1,7 @@
 
-# from Cython.Build import cythonize
+import glob
+import os
+
 from setuptools import setup, Extension
 
 
@@ -7,9 +9,19 @@ with open("README.md", "r") as fh:
     long_description = fh.read()
 
 
+DIR = os.path.dirname(__file__)
+
+
+def get_pyx():
+    for path in glob.glob(os.path.join(DIR, 'src/aiolo/*.pyx')):
+        module = 'aiolo.%s' % os.path.splitext(os.path.basename(path))[0]
+        source = os.path.join('src/aiolo', os.path.basename(path))
+        yield module, source
+
+
 setup(
     name='aiolo',
-    version='2.0.0',
+    version='3.0.0',
     description='asyncio-friendly Python bindings for liblo',
     long_description=long_description,
     long_description_content_type="text/markdown",
@@ -28,45 +40,23 @@ setup(
     },
     ext_modules=[
         Extension(
-            'aiolo.bundles',
-            sources=['src/aiolo/bundles.pyx'],
+            module,
+            sources=[source],
             libraries=['lo'],
-        ),
-        Extension(
-            'aiolo.clients',
-            sources=['src/aiolo/clients.pyx'],
-            libraries=['lo'],
-        ),
-        Extension(
-            'aiolo.lo',
-            sources=['src/aiolo/lo.pyx'],
-            libraries=['lo'],
-        ),
-        Extension(
-            'aiolo.messages',
-            sources=['src/aiolo/messages.pyx'],
-            libraries=['lo'],
-        ),
-        Extension(
-            'aiolo.servers',
-            sources=['src/aiolo/servers.pyx'],
-            libraries=['lo'],
-        ),
-        Extension(
-            'aiolo.timetags',
-            sources=['src/aiolo/timetags.pyx'],
-            libraries=['lo'],
-        ),
-        Extension(
-            'aiolo.types',
-            sources=['src/aiolo/types.pyx'],
-            libraries=['lo'],
-        ),
+        )
+        for module, source in get_pyx()
     ],
     setup_requires=['cython'],
     extras_require={
-        'dev': [
+        'examples': [
             'pyaudio',
+        ],
+        'test': [
+            'pytest',
+            'pytest-asyncio',
+        ],
+        'dev': [
+            'sphinx',
         ]
     },
     classifiers=[

@@ -1,14 +1,15 @@
 # cython: language_level=3
 
-import datetime
-from typing import Union, Iterable
+cimport cython
 
-from . cimport bundles, lo, messages, timetags
-from . import exceptions, logs, routes
+from typing import Union
+
+from . import typedefs
+from . cimport bundles, lo, messages
 
 
+@cython.no_gc
 cdef class Client:
-
     def __cinit__(self, *, url: str):
         burl = url.encode('utf8')
         self.lo_address = lo.lo_address_new_from_url(burl)
@@ -29,36 +30,15 @@ cdef class Client:
     def url(self):
         return lo.lo_address_get_url(self.lo_address)
 
-    def pub(self, route: routes.Route, *data) -> None:
-        message = messages.Message(route, *data)
-        try:
-            self.pubm(message)
-        finally:
-            del message
+    def pub(self, route: Union[typedefs.RouteTypes], *data: typedefs.MessageTypes) -> int:
+        return self.pub_message(messages.Message(route, *data))
 
-    def pubm(self, message: messages.Message) -> None:
-        logs.logger.debug('%r: publishing %r', self, message)
-        count = lo.lo_send_message(self.lo_address, message.route.bpath, message.lo_message())
-        if count <= 0:
-            raise exceptions.SendError(count)
-        logs.logger.debug('%r: sent %s bytes', self, count)
+    def pub_message(self, message: messages.Message) -> int:
+        return (<messages.Message>message).send(self.lo_address)
 
-    def bundle(
-            self,
-            msgs: Iterable[messages.Message, None] = None,
-            timetag: Union[timetags.TimeTag, datetime.datetime, float, None] = None
-    ) -> None:
-        bundle = bundles.Bundle(msgs, timetag=timetag)
-        try:
-            self.bundleb(bundle)
-        finally:
-            del bundle
-
-    def bundleb(self, bundle: bundles.Bundle):
-        logs.logger.debug('%r: publishing %r', self, bundle)
-        count = lo.lo_send_bundle(self.lo_address, bundle.lo_bundle)
-        if count <= 0:
-            raise exceptions.SendError(count)
-        logs.logger.debug('%r: sent %s bytes', self, count)
-
-
+    def bundle(self, bundle: typedefs.BundleTypes, timetag: typedefs.TimeTagTypes = None) -> int:
+        if not isinstance(bundle, bundles.Bundle):
+            bundle = bundles.Bundle(bundle, timetag)
+        elif timetag is not None:
+            raise ValueError('Cannot provide Bundle instance and timetag together')
+        return (<bundles.Bundle>bundle).send(self.lo_address)
