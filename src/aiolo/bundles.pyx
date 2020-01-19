@@ -2,6 +2,7 @@
 
 from typing import Iterable
 
+from .timetags import TT_IMMEDIATE
 from . import exceptions, logs, typedefs
 from . cimport lo, messages, paths, timetags
 
@@ -12,7 +13,13 @@ cdef class Bundle:
         msgs: Iterable[typedefs.BundleTypes],
         timetag: typedefs.TimeTagTypes = None
     ):
-        self.timetag = timetag if isinstance(timetag, timetags.TimeTag) else timetags.TimeTag(timetag)
+        if timetag is None:
+            # optimization, re-use TT_IMMEDIATE rather than construct a new one
+            timetag = TT_IMMEDIATE
+        elif not isinstance(timetag, timetags.TimeTag):
+            timetag = timetags.TimeTag(timetag)
+        self.timetag = timetag
+        logs.logger.debug('BUNDLING WITH %s' % self.timetag.dt)
         self.lo_bundle = lo.lo_bundle_new((<timetags.TimeTag>timetag).lo_timetag)
         if self.lo_bundle is NULL:
             raise MemoryError
@@ -59,13 +66,15 @@ cdef class Bundle:
         return None
 
     cpdef object add_bundle(Bundle self, Bundle bundle):
+        if self.lo_bundle == bundle.lo_bundle:
+            raise ValueError('Cannot add bundle to itself')
         if lo.lo_bundle_add_bundle(self.lo_bundle, bundle.lo_bundle) != 0:
             raise MemoryError
         self.msgs.append(bundle)
         return None
 
     cdef object send(self, lo.lo_address lo_address):
-        logs.logger.debug('%r: publishing %r', self)
+        logs.logger.debug('%r: sending', self)
         count = lo.lo_send_bundle(lo_address, self.lo_bundle)
         if count <= 0:
             raise exceptions.SendError(count)

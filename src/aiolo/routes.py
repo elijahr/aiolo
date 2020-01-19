@@ -1,5 +1,5 @@
 import asyncio
-import collections
+import collections.abc
 from typing import Union, Any
 
 from . import argdefs, exceptions, logs, paths, typedefs
@@ -36,17 +36,20 @@ class Route:
     def is_pattern(self) -> bool:
         return self.path.is_pattern
 
-    def pub(self, item: Any):
-        for sub in self.subs:
-            sub.pub(item)
+    async def pub(self, item: Any):
+        await asyncio.gather(*[
+            s.pub(item)
+            for s in self.subs
+        ])
 
     def sub(self):
         sub = Sub(self)
         self.subs.append(sub)
         return sub
 
-    def unsub(self, sub):
+    async def unsub(self, sub):
         self.subs.remove(sub)
+        await sub.pub(exceptions.Unsubscribed())
 
 
 class Sub(collections.abc.AsyncIterator):
@@ -84,13 +87,12 @@ class Sub(collections.abc.AsyncIterator):
         else:
             return msg
 
-    def pub(self, item: Any):
+    async def pub(self, item: Any):
         logs.logger.debug('%r: publishing %r', self, item)
-        self.inbox.put_nowait(item)
+        await self.inbox.put(item)
 
-    def unsub(self):
-        self.route.unsub(self)
-        self.pub(exceptions.Unsubscribed())
+    async def unsub(self):
+        await self.route.unsub(self)
 
 
 class Subs(collections.abc.AsyncIterator):
@@ -130,10 +132,14 @@ class Subs(collections.abc.AsyncIterator):
         logs.logger.debug('%r: got item from inbox %r', self, msg)
         return msg
 
-    def pub(self, item: Any):
-        for s in self._subs:
+    async def pub(self, item: Any):
+        await asyncio.gather(*[
             s.pub(item)
+            for s in self._subs
+        ])
 
-    def unsub(self):
-        for s in self._subs:
+    async def unsub(self):
+        await asyncio.gather(*[
             s.unsub()
+            for s in self._subs
+        ])

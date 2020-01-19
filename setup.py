@@ -54,13 +54,16 @@ setup(
         'test': [
             'pytest',
             'pytest-asyncio',
+            'pytz',
         ],
         'dev': [
-            'sphinx',
+            'pytest',
+            'pytest-asyncio',
+            'pytz',
+            'pytest-watch',
         ]
     },
     classifiers=[
-        'Development Status :: 3 - Alpha',
         'Environment :: Console',
         'Intended Audience :: Developers',
         'License :: OSI Approved :: BSD License',
@@ -68,7 +71,6 @@ setup(
         'Operating System :: POSIX :: Linux',
         'Programming Language :: Python :: 3',
         'Topic :: Multimedia :: Sound/Audio',
-        'Topic :: Multimedia :: Sound/Audio :: Sound Synthesis',
         'Framework :: AsyncIO',
     ],
 )

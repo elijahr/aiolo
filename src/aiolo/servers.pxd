@@ -1,16 +1,15 @@
 # cython: language_level=3
 
-cimport cython
 
 from . cimport lo
 
-
-@cython.no_gc_clear
 cdef class Server:
     cdef public dict routing
     cdef lo.lo_server lo_server
     cpdef public str url
     cdef object sock
+
+    cdef void _server_recv_noblock(Server self, object loop)
 
 cdef void on_error(int num, const char *msg, const char *path) nogil
 

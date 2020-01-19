@@ -20,11 +20,9 @@ cdef class Server:
         pass
 
     def __dealloc__(self):
-        # objects are retained by no_gc_clear so that we can properly
-        # cleanup the socket and stolen route references when this
-        # instance is garbage collected
-        if self.running:
-            self.stop()
+        if self.lo_server is not NULL:
+            lo.lo_server_free(self.lo_server)
+            self.lo_server = NULL
 
     def __repr__(self):
         return 'Server(%r)' % self.url
@@ -46,12 +44,14 @@ cdef class Server:
         if self.lo_server is NULL:
             raise MemoryError
 
+        lo.lo_server_enable_queue(self.lo_server, 1, 0)
+
         for route in self.routing.values():
             self._add_route(route)
 
         self.sock = socket.socket(fileno=lo.lo_server_get_socket_fd(self.lo_server))
         loop = asyncio.get_event_loop()
-        loop.add_reader(self.sock, self._on_sock_ready)
+        loop.add_reader(self.sock, self._on_sock_readable, loop)
         logs.logger.debug('%r: started, listening on %r', self, loop)
 
     def stop(self):
@@ -62,7 +62,7 @@ cdef class Server:
         for route in self.routing.values():
             Py_DECREF(route)
         try:
-            self.sock.close()
+            self.sock.detach()
         except OSError:
             pass
         self.sock = None
@@ -115,19 +115,42 @@ cdef class Server:
                 self._del_route(route)
         return route
 
-    def _on_sock_ready(self):
+    def _on_sock_readable(self, loop):
         logs.logger.debug('%r: incoming data on socket', self)
+        self._server_recv_noblock(loop)
+
+    cdef void _server_recv_noblock(Server self, object loop):
+        cdef:
+            int count
+            double delay
+
         while True:
             count = lo.lo_server_recv_noblock(self.lo_server, 0)
             if count == 0:
                 break
             logs.logger.debug('%r: processed %r bytes', self, count)
 
+        # Check for scheduled bundles
+        if lo.lo_server_events_pending(self.lo_server):
+            delay = lo.lo_server_next_event_delay(self.lo_server)
+            logs.logger.debug('%r: pending server events, will check in %ss', self, delay)
+            # I am verklempt that passing a cdef void function to call_later actually works,
+            # but it does! I'll just go with it because it is faster.
+            loop.call_later(delay, self._server_recv_noblock, self, loop)
+
+    @property
+    def events_pending(self) -> bool:
+        return bool(lo.lo_server_events_pending(self.lo_server))
+
+    @property
+    def next_event_delay(self) -> float:
+        return lo.lo_server_next_event_delay(self.lo_server)
+
     def _add_route(self, route: routes.Route):
         cdef:
             char * path = (<paths.Path>route.path).charp()
             char * argdef = (<argdefs.Argdef>route.argdef).charp()
-        # Steal a ref
+        # Steal ref
         Py_INCREF(route)
         lo.lo_server_add_method(
             self.lo_server,
@@ -144,9 +167,8 @@ cdef class Server:
         lo.lo_server_del_method(
             self.lo_server,
             path,
-            argdef,
-        )
-        # Unsteal the ref
+            argdef)
+        # Unsteal ref
         Py_DECREF(route)
         logs.logger.debug('%r: removed route %r' % (self, route))
 
@@ -162,6 +184,7 @@ cdef void on_error(int num, const char *msg, const char *path) nogil:
         logs.logger.error("liblo server error %s: %s" % (num, m))
 
 
+
 cdef int router(
     const char *path,
     const char *argtypes,
@@ -171,12 +194,13 @@ cdef int router(
     void *_route
 ) nogil except 1:
     cdef int retval = 0
+    cdef lo.lo_timetag lo_timetag
     with gil:
         route = <object>_route
         try:
             data = argdefs.Argdef(argtypes).unpack_args(argv, argc)
             logs.logger.debug('%r: received message %r', route, data)
-            route.pub(data)
+            asyncio.get_event_loop().create_task(route.pub(data))
         except BaseException as exc:
             logs.logger.exception(exc)
             retval = 1

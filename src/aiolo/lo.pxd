@@ -2,6 +2,7 @@
 
 from libc.stdint cimport uint64_t, uint32_t, int32_t, int64_t, uint8_t
 
+
 cdef extern from "lo/lo.h" nogil:
 
     cdef struct _lo_split64_lo_split64_part_s:
@@ -366,10 +367,6 @@ cdef extern from "lo/lo.h" nogil:
 
     void lo_version(char* verstr, int verstr_size, int* major, int* minor, char* extra, int extra_size, int* lt_major, int* lt_minor, int* lt_bug)
 
-
-ctypedef struct lo_address_header:
-    char *host
-    int socket
 
 # This is only needed so the module gets an init
 cdef class Nothing:
