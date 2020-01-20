@@ -2,8 +2,8 @@
 
 from typing import Iterable
 
-from . import exceptions, logs, routes, typedefs
-from . cimport addresses, argdefs, lo, midis, paths, servers, timetags
+from . import routes, typedefs
+from . cimport argdefs, midis, timetags
 
 
 cdef class Message:
@@ -17,47 +17,6 @@ cdef class Message:
 
     def __repr__(self):
         return 'Message(%r, %r)' % (self.route, self.data)
-
-    cpdef int send_from(Message self, addresses.Address address, servers.Server server):
-        if self.route.path.matches_any:
-            raise ValueError('Message must be sent to a specific path or pattern')
-
-        logs.logger.debug('%r: sending to %r from %r', self, address, server)
-        cdef:
-            lo.lo_address lo_address = (<addresses.Address>address).lo_address
-            lo.lo_server lo_server = (<servers.Server>server).lo_server
-            char * path = (<paths.Path>self.route.path).charp()
-
-        count = lo.lo_send_message_from(lo_address, lo_server, path, self.lo_message)
-
-        if lo.lo_address_errno(lo_address):
-            raise exceptions.SendError(
-                '%s (%s)' % ((<bytes>lo.lo_address_errstr(lo_address)).decode('utf8'),
-                             str(lo.lo_address_errno(lo_address))))
-        if count <= 0:
-            raise exceptions.SendError(count)
-        logs.logger.debug('%r: sent %s bytes', self, count)
-
-    cpdef int send(Message self, addresses.Address address):
-        if self.route.path.matches_any:
-            raise ValueError('Message must be sent to a specific path or pattern')
-
-        cdef lo.lo_address lo_address = (<addresses.Address>address).lo_address
-
-        logs.logger.debug('%r: sending to %r', self, address)
-        count = lo.lo_send_message(
-            lo_address,
-            (<paths.Path>self.route.path).charp(),
-            self.lo_message
-        )
-        if lo.lo_address_errno(lo_address):
-            raise exceptions.SendError(
-                '%s (%s)' % ((<bytes>lo.lo_address_errstr(lo_address)).decode('utf8'),
-                             str(lo.lo_address_errno(lo_address))))
-        if count <= 0:
-            raise exceptions.SendError(count)
-        logs.logger.debug('%r: sent %s bytes', self, count)
-        return count
 
 
 BASIC_TYPES = (

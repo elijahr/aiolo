@@ -13,7 +13,7 @@ cdef class Server:
     cdef object sock
     cdef multicasts.MultiCast multicast
 
-    cdef void _server_recv_noblock(Server self, object loop, bint retry)
+    cdef void _server_recv_noblock(Server self, object loop)
 
 cdef void on_error(int num, const char *msg, const char *path) nogil
 

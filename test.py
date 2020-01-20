@@ -94,81 +94,82 @@ def ipv6_servers():
 
 
 @pytest.fixture
-async def client(server):
+async def address(server):
     await asyncio.sleep(0.0000000000001)
-    return aiolo.Client(url=server.url)
+    return aiolo.Address(url=server.url)
 
 
 @pytest.mark.asyncio
-async def test_multiple_clients(event_loop, server):
+async def test_multiple_addresses(event_loop, server):
     foo = server.route('/foo', str)
-    client1 = aiolo.Client(url=server.url)
-    client2 = aiolo.Client(url=server.url)
-    client3 = aiolo.Client(url=server.url)
+    address1 = aiolo.Address(url=server.url)
+    address2 = aiolo.Address(url=server.url)
+    address3 = aiolo.Address(url=server.url)
     task = create_task(subscribe(foo.sub(), 3))
     event_loop.call_later(2, task.cancel)
-    await client1.pub(foo, 'client1')
+    await address1.pub(foo, 'address1')
     # I am verklempt why this sleep is necessary, but it is, or the messages never get processed
     await asyncio.sleep(0.0000000000001)
-    await client2.pub(foo, 'client2')
+    await address2.pub(foo, 'address2')
     await asyncio.sleep(0.0000000000001)
-    await client3.pub(foo, 'client3')
+    await address3.pub(foo, 'address3')
     await asyncio.sleep(0.0000000000001)
     results = await task
-    assert results == [['client1'], ['client2'], ['client3']]
+    assert results == [['address1'], ['address2'], ['address3']]
 
 
-def test_client_interface_ipv4(server, interfaces_by_ipv4):
+def test_address_interface_ipv4(server, interfaces_by_ipv4):
     assert any(interfaces_by_ipv4)
 
     for iface in interfaces_by_ipv4.values():
-        client = aiolo.Client(url=server.url)
-        client.interface = iface
-        assert client.interface == iface
+        address = aiolo.Address(url=server.url)
+        address.interface = iface
+        assert address.interface == iface
 
     for ipv4, iface in interfaces_by_ipv4.items():
-        client = aiolo.Client(url=server.url)
-        assert client.interface is None
-        client.set_ip(ipv4)
-        assert client.interface == iface
+        address = aiolo.Address(url=server.url)
+        assert address.interface is None
+        address.set_ip(ipv4)
+        assert address.interface == iface
 
-    client = aiolo.Client(url=server.url)
+    address = aiolo.Address(url=server.url)
     with pytest.raises(ValueError):
-        client.interface = 'foobar0'
+        address.interface = 'foobar0'
     with pytest.raises(ValueError):
-        client.set_ip('foo.bar')
+        address.set_ip('foo.bar')
     with pytest.raises(ValueError):
-        client.set_ip('1.2.3.4')
+        address.set_ip('1.2.3.4')
 
 
 @pytest.mark.no_ipv6
 @pytest.mark.asyncio
 async def test_multicast(event_loop, multicast_server):
     foo = multicast_server.route('/foo', str)
+    address = aiolo.MultiCastAddress(multicast_server)
     task = create_task(subscribe(foo.sub(), 3))
     event_loop.call_later(CANCEL_TIMEOUT, task.cancel)
-    multicast_server.pub_from(foo, 'foo')
-    multicast_server.pub_from(foo, 'bar')
-    multicast_server.pub_from(foo, 'baz')
+    await address.pub(foo, 'foo')
+    await address.pub(foo, 'bar')
+    await address.pub(foo, 'baz')
     results = await task
     assert results == [['foo'], ['bar'], ['baz']]
 
 
 @pytest.mark.ipv6
 @pytest.mark.parametrize('ipv6_server', ipv6_servers())
-def test_client_interface_ipv6(ipv6_server, interfaces_by_ipv6):
+def test_address_interface_ipv6(ipv6_server, interfaces_by_ipv6):
     assert any(interfaces_by_ipv6)
 
     for ipv6, iface in interfaces_by_ipv6.items():
-        client = aiolo.Client(url=ipv6_server.url)
-        assert client.interface is None
+        address = aiolo.Address(url=ipv6_server.url)
+        assert address.interface is None
         try:
-            client.set_ip(ipv6)
+            address.set_ip(ipv6)
         except Exception as exc:
             aiolo.logger.exception(exc)
         else:
             print("SET THE IP")
-        assert client.interface == iface
+        assert address.interface == iface
 
 
 @pytest.mark.asyncio
@@ -183,16 +184,16 @@ async def test_multiple_servers(event_loop):
         foo = server1.route('/foo', str)
         server2.route(foo)
         server3.route(foo)
-        client1 = aiolo.Client(url=server1.url)
-        client2 = aiolo.Client(url=server2.url)
-        client3 = aiolo.Client(url=server3.url)
+        address1 = aiolo.Address(url=server1.url)
+        address2 = aiolo.Address(url=server2.url)
+        address3 = aiolo.Address(url=server3.url)
         task = create_task(subscribe(foo.sub(), 3))
         event_loop.call_later(CANCEL_TIMEOUT, task.cancel)
-        await client1.pub(foo, 'client1')
-        await client2.pub(foo, 'client2')
-        await client3.pub(foo, 'client3')
+        await address1.pub(foo, 'address1')
+        await address2.pub(foo, 'address2')
+        await address3.pub(foo, 'address3')
         results = await task
-        assert results == [['client1'], ['client2'], ['client3']]
+        assert results == [['address1'], ['address2'], ['address3']]
     finally:
         server1.stop()
         server2.stop()
@@ -210,10 +211,10 @@ def valid_types_params():
 
 @pytest.mark.parametrize('path, argdef, publish, expected', valid_types_params())
 @pytest.mark.asyncio
-async def test_valid_types(event_loop, server, client, path, argdef, publish, expected):
+async def test_valid_types(event_loop, server, address, path, argdef, publish, expected):
     route = server.route(path, argdef)
     task = create_task(subscribe(route.sub(), 1))
-    await client.pub(route, publish)
+    await address.pub(route, publish)
     event_loop.call_later(CANCEL_TIMEOUT, task.cancel)
     try:
         result = await task
@@ -234,10 +235,10 @@ def invalid_types_params():
 
 @pytest.mark.parametrize('path, argdef, invalid', invalid_types_params())
 @pytest.mark.asyncio
-async def test_invalid_types(server, client, path, argdef, invalid):
+async def test_invalid_types(server, address, path, argdef, invalid):
     route = server.route(path, [argdef])
     with pytest.raises(ValueError):
-        await client.pub(route, invalid)
+        await address.pub(route, invalid)
 
 
 @pytest.mark.parametrize('argdef,value', [
@@ -252,44 +253,31 @@ def test_guess_argtypes(argdef, value):
 
 
 @pytest.mark.asyncio
-async def test_multiple_subs(event_loop, server, client):
+async def test_multiple_subs(event_loop, server, address):
     foo = server.route('/foo', 's')
     tasks = asyncio.gather(
         create_task(subscribe(foo.sub(), 1)),
         create_task(subscribe(foo.sub(), 1)),
     )
     event_loop.call_later(CANCEL_TIMEOUT, tasks.cancel)
-    await client.pub(foo, 'bar')
+    await address.pub(foo, 'bar')
     results = list(await tasks)
     assert results == [[['bar']], [['bar']]]
 
 
 @pytest.mark.asyncio
-async def test_unroute(event_loop, server, client):
+async def test_unroute(event_loop, server, address):
     foo = server.route('/foo', 's')
     task = create_task(subscribe(foo.sub(), 1))
     event_loop.call_later(CANCEL_TIMEOUT, task.cancel)
     server.unroute(foo)
-    await client.pub(foo, 'bar')
+    await address.pub(foo, 'bar')
     with pytest.raises(asyncio.CancelledError):
         await task
 
 
-def test_timetag():
-    assert aiolo.TimeTag(0) == aiolo.EPOCH_UTC
-    assert int(aiolo.TimeTag(10)) == 10
-    assert aiolo.TimeTag() == aiolo.TT_IMMEDIATE
-    assert int(aiolo.TimeTag().timestamp) == aiolo.EPOCH_OSC.timestamp()
-
-    now_chicago = datetime.datetime.now(pytz.timezone('America/Chicago'))
-    assert aiolo.TimeTag(now_chicago) == now_chicago
-    assert aiolo.TimeTag(now_chicago).timestamp == now_chicago.timestamp()
-    assert aiolo.TimeTag(now_chicago).dt == now_chicago
-
-
-
 @pytest.mark.asyncio
-async def test_bundle(event_loop, server, client):
+async def test_bundle(event_loop, server, address):
     routes = [
         server.route(path, 's')
         for path in ('/foo', '/bar', '/baz')
@@ -299,7 +287,7 @@ async def test_bundle(event_loop, server, client):
         for route in routes
     ])
     event_loop.call_later(CANCEL_TIMEOUT, tasks.cancel)
-    await client.bundle([
+    await address.bundle([
         aiolo.Message(route, str(route.path))
         for route in routes
     ])
@@ -308,27 +296,33 @@ async def test_bundle(event_loop, server, client):
 
 
 @pytest.mark.asyncio
-async def test_delayed_bundle(event_loop):
+async def test_bundle_delayed(event_loop):
     server = aiolo.Server(url='osc.tcp://:10000')
     server.start()
     try:
-        client = aiolo.Client(url=server.url)
+        address = aiolo.Address(url=server.url)
         foo = server.route('/foo', 's')
         task = create_task(subscribe(foo.sub(), 1))
-        event_loop.call_later(1, task.cancel)
-        await client.bundle([
-            aiolo.Message(foo, 'bar')
-        ], timetag=datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(seconds=CANCEL_TIMEOUT / 2))
-        assert server.events_pending
-        assert server.next_event_delay > 0
+        event_loop.call_later(2, task.cancel)
+        await address.bundle([
+            aiolo.Message(foo, 'now'),
+            aiolo.Bundle(
+                [aiolo.Message(foo, 'later')],
+                timetag=datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(seconds=1))
+        ])
         results = list(await task)
-        assert results == [['bar']]
+        assert results == [['now']]
+        assert server.events_pending
+        assert 0 < server.next_event_delay < 1
+        task = create_task(subscribe(foo.sub(), 1))
+        results = list(await task)
+        assert results == [['later']]
     finally:
         server.stop()
 
 
 @pytest.mark.asyncio
-async def test_bundle_join(event_loop, server, client):
+async def test_bundle_join(event_loop, server, address):
     foo = server.route('/foo', 's')
     bar = server.route('/bar', 's')
     bundle = aiolo.Bundle([aiolo.Message(foo, 'foo')])
@@ -337,14 +331,14 @@ async def test_bundle_join(event_loop, server, client):
         create_task(subscribe(foo.sub(), 1)),
         create_task(subscribe(bar.sub(), 1)),
     )
-    await client.bundle(bundle)
+    await address.bundle(bundle)
     event_loop.call_later(CANCEL_TIMEOUT, tasks.cancel)
     results = list(await tasks)
     assert results == [[['foo']], [['bar']]]
 
 
 @pytest.mark.asyncio
-async def test_route_pattern(event_loop, server, client):
+async def test_route_pattern(event_loop, server, address):
     foo = server.route('/foo', 's')
     bar = server.route('/bar', 's')
     tasks = asyncio.gather(
@@ -353,13 +347,13 @@ async def test_route_pattern(event_loop, server, client):
     )
     event_loop.call_later(CANCEL_TIMEOUT, tasks.cancel)
     wildcard = aiolo.Route('/[a-z]*', 's')
-    await client.pub(wildcard, ['baz'])
+    await address.pub(wildcard, ['baz'])
     results = list(await tasks)
     assert results == [[['baz']], [['baz']]]
 
 
 @pytest.mark.asyncio
-async def test_route_join(event_loop, server, client):
+async def test_route_join(event_loop, server, address):
     foo = server.route('/foo', 's')
     bar = server.route('/bar', 's')
     baz = server.route('/baz', 's')
@@ -376,7 +370,7 @@ async def test_route_join(event_loop, server, client):
     route &= baz
     route &= spaz
     assert route.is_pattern
-    await client.pub(route, 'hello')
+    await address.pub(route, 'hello')
     results = list(await tasks)
     assert results == [[['hello']], [['hello']], [['hello']], [['hello']]]
 
@@ -389,48 +383,60 @@ def test_cannot_serve_pattern(server):
 
 
 @pytest.mark.asyncio
-async def test_any_path(event_loop, server, client):
+async def test_any_path(event_loop, server, address):
     any_path = server.route(aiolo.ANY_PATH, 's')
     task = create_task(subscribe(any_path.sub(), 1))
     event_loop.call_later(CANCEL_TIMEOUT, task.cancel)
     with pytest.raises(ValueError):
-        await client.pub(any_path, ['foo'])
-    await client.pub(aiolo.Route('/foo', 's'), ['foo'])
+        await address.pub(any_path, ['foo'])
+    await address.pub(aiolo.Route('/foo', 's'), ['foo'])
     results = list(await task)
     assert results == [['foo']]
 
 
 @pytest.mark.asyncio
-async def test_no_args(event_loop, server, client):
+async def test_no_args(event_loop, server, address):
     foo = server.route('/foo', aiolo.NO_ARGS)
     task = create_task(subscribe(foo.sub(), 1))
     event_loop.call_later(CANCEL_TIMEOUT, task.cancel)
-    await client.pub(foo)
+    await address.pub(foo)
     results = list(await task)
     assert results == [[]]
 
 
 @pytest.mark.asyncio
-async def test_any_args(event_loop, server, client):
+async def test_any_args(event_loop, server, address):
     foo = server.route('/foo', aiolo.ANY_ARGS)
     task = create_task(subscribe(foo.sub(), 1))
     event_loop.call_later(CANCEL_TIMEOUT, task.cancel)
-    await client.pub(foo, 'foo')
+    await address.pub(foo, 'foo')
     results = list(await task)
     assert results == [['foo']]
 
 
 @pytest.mark.asyncio
-async def test_sub_join(event_loop, server, client):
+async def test_sub_join(event_loop, server, address):
     foo = server.route('/foo', 's')
     bar = server.route('/bar', 's')
     sub = foo.sub() | bar.sub()
     task = create_task(subscribe(sub, 2))
     event_loop.call_later(0.1, task.cancel)
-    await client.pub(foo, 'foo')
-    await client.pub(bar, 'bar')
+    await address.pub(foo, 'foo')
+    await address.pub(bar, 'bar')
     results = list(await task)
     assert sorted(results) == [['bar'], ['foo']]
+
+
+def test_timetag():
+    assert aiolo.TimeTag(0) == aiolo.EPOCH_UTC
+    assert int(aiolo.TimeTag(10)) == 10
+    assert aiolo.TimeTag() == aiolo.TT_IMMEDIATE == aiolo.EPOCH_OSC
+    assert int(aiolo.TimeTag().timestamp) == aiolo.EPOCH_OSC.timestamp()
+
+    now_chicago = datetime.datetime.now(pytz.timezone('America/Chicago'))
+    assert aiolo.TimeTag(now_chicago) == now_chicago
+    assert aiolo.TimeTag(now_chicago).timestamp == now_chicago.timestamp()
+    assert aiolo.TimeTag(now_chicago).dt == now_chicago
 
 
 def test_timetag_parts_to_timestamp():

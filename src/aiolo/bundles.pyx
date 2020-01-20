@@ -3,8 +3,8 @@
 from typing import Iterable
 
 from .timetags import TT_IMMEDIATE
-from . import exceptions, logs, typedefs
-from . cimport addresses, lo, messages, paths, servers, timetags
+from . import logs, typedefs
+from . cimport lo, messages, paths, timetags
 
 
 cdef class Bundle:
@@ -19,7 +19,6 @@ cdef class Bundle:
         elif not isinstance(timetag, timetags.TimeTag):
             timetag = timetags.TimeTag(timetag)
         self.timetag = timetag
-        logs.logger.debug('BUNDLING WITH %s' % self.timetag.dt)
         self.lo_bundle = lo.lo_bundle_new((<timetags.TimeTag>timetag).lo_timetag)
         if self.lo_bundle is NULL:
             raise MemoryError
@@ -72,32 +71,3 @@ cdef class Bundle:
             raise MemoryError
         self.msgs.append(bundle)
         return None
-
-    cpdef int send_from(Bundle self, addresses.Address address, servers.Server server):
-        cdef:
-            lo.lo_address lo_address = (<addresses.Address>address).lo_address
-            lo.lo_server lo_server = (<servers.Server>server).lo_server
-        logs.logger.debug('%r: sending to %r from %r', self, address, server)
-
-        count = lo.lo_send_bundle_from(lo_address, lo_server, self.lo_bundle)
-
-        if lo.lo_address_errno(lo_address):
-            raise exceptions.SendError(
-                '%s (%s)' % ((<bytes>lo.lo_address_errstr(lo_address)).decode('utf8'),
-                             str(lo.lo_address_errno(lo_address))))
-        if count <= 0:
-            raise exceptions.SendError(count)
-        logs.logger.debug('%r: sent %s bytes', self, count)
-
-    cpdef int send(Bundle self, addresses.Address address):
-        cdef lo.lo_address lo_address = (<addresses.Address>address).lo_address
-        logs.logger.debug('%r: sending to %r', self, address)
-        count = lo.lo_send_bundle(lo_address, self.lo_bundle)
-        if lo.lo_address_errno(lo_address):
-            raise exceptions.SendError(
-                '%s (%s)' % ((<bytes>lo.lo_address_errstr(lo_address)).decode('utf8'),
-                             str(lo.lo_address_errno(lo_address))))
-        if count <= 0:
-            raise exceptions.SendError(count)
-        logs.logger.debug('%r: sent %s bytes', self, count)
-        return count
