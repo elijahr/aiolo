@@ -34,9 +34,10 @@ matrix:
     - os: linux
       env: DEBIAN_FRONTEND=noninteractive
       python: "pypy3"
-    - os: linux
-      env: DEBIAN_FRONTEND=noninteractive IPV6=1
-      python: "3.8"
+      # ipv6 doesn't seem to work in liblo
+#    - os: linux
+#      env: DEBIAN_FRONTEND=noninteractive IPV6=1
+#      python: "3.8"
     - os: osx
       env: CPYTHON_VERSION=3.6.8 PYTHON_PATH=/usr/local/bin/python3.6
       language: generic

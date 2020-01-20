@@ -12,7 +12,7 @@ import pytest
 import test_data
 
 
-CANCEL_TIMEOUT = 2
+CANCEL_TIMEOUT = 3
 
 
 def create_task(coro):
@@ -42,6 +42,7 @@ def server(event_loop):
 
 @pytest.fixture
 async def address(server):
+    await asyncio.sleep(0.001)
     return aiolo.Address(url=server.url)
 
 
