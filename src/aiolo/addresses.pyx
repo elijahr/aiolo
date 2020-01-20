@@ -1,14 +1,8 @@
 # cython: language_level=3
-import asyncio
-from typing import Union, Awaitable
-
-try:
-    import __pypy__
-except ImportError:
-    __pypy__ = None
+from typing import Union
 
 from . import exceptions, ips, logs, typedefs
-from . cimport bundles, lo, paths
+from . cimport bundles, lo, messages, paths
 
 
 PROTO_DEFAULT = 0x0
@@ -179,16 +173,17 @@ cdef class Address:
         if lo.lo_address_set_iface(self.lo_address, iface, i) != 0:
             raise ValueError('Could not set ip to %s' % repr(ip))
 
-    cpdef int send_bundle(Address self, bundles.Bundle bundle):
-        logs.logger.debug('%r: sending %r', self, bundle)
-        count = lo.lo_send_bundle(self.lo_address, (<bundles.Bundle>bundle).lo_bundle)
-        self.check_send_error()
-        if count <= 0:
-            raise exceptions.SendError(count)
-        logs.logger.debug('%r: sent %s bytes', self, count)
-        return count
+    def check_send_error(Address self):
+        if lo.lo_address_errno(self.lo_address):
+            raise exceptions.SendError(
+                '%s (%s)' % ((<bytes>lo.lo_address_errstr(self.lo_address)).decode('utf8'),
+                             str(lo.lo_address_errno(self.lo_address))))
 
-    cpdef int send_message(Address self, messages.Message message):
+    def pub(self, route: Union[typedefs.RouteTypes], *data: typedefs.MessageTypes) -> int:
+        message = messages.Message(route, *data)
+        return self.message(message)
+
+    def message(self, message: messages.Message) -> int:
         if message.route.path.matches_any:
             raise ValueError('Message must be sent to a specific path or pattern')
 
@@ -205,59 +200,15 @@ cdef class Address:
         logs.logger.debug('%r: sent %s bytes', self, count)
         return count
 
-    def check_send_error(Address self):
-        if lo.lo_address_errno(self.lo_address):
-            raise exceptions.SendError(
-                '%s (%s)' % ((<bytes>lo.lo_address_errstr(self.lo_address)).decode('utf8'),
-                             str(lo.lo_address_errno(self.lo_address))))
-
-    if __pypy__:
-        # PyPy doesn't correctly detect Cython coroutines so we have to do some hackry
-        # and return futures from vanilla functions.
-        def pub(self, route: Union[typedefs.RouteTypes], *data: typedefs.MessageTypes) -> Awaitable[int]:
-            return self.pub_message(messages.Message(route, *data))
-
-        def pub_message(self, message: messages.Message) -> Awaitable[int]:
-            cdef:
-                object fut = asyncio.Future()
-                int retval
-            try:
-                retval = self.send_message(message)
-            except Exception as exc:
-                fut.set_exception(exc)
-            else:
-                fut.set_result(retval)
-            return fut
-
-        def bundle(self, bundle: typedefs.BundleTypes, timetag: typedefs.TimeTagTypes = None) -> Awaitable[int]:
-            cdef:
-                object fut = asyncio.Future()
-                int retval
-            try:
-                if not isinstance(bundle, bundles.Bundle):
-                    bundle = bundles.Bundle(bundle, timetag)
-                elif timetag is not None:
-                    raise ValueError('Cannot provide Bundle instance and timetag together')
-                retval = self.send_bundle(bundle)
-            except Exception as exc:
-                fut.set_exception(exc)
-            else:
-                fut.set_result(retval)
-            return fut
-
-    else:
-        async def pub(self, route: Union[typedefs.RouteTypes], *data: typedefs.MessageTypes) -> int:
-            retval = await self.pub_message(messages.Message(route, *data))
-            return retval
-
-        async def pub_message(self, message: messages.Message) -> int:
-            retval = (<messages.Message>message).send(self)
-            return retval
-
-        async def bundle(self, bundle: typedefs.BundleTypes, timetag: typedefs.TimeTagTypes = None) -> int:
-            if not isinstance(bundle, bundles.Bundle):
-                bundle = bundles.Bundle(bundle, timetag)
-            elif timetag is not None:
-                raise ValueError('Cannot provide Bundle instance and timetag together')
-            retval = (<bundles.Bundle>bundle).send(self)
-            return retval
+    def bundle(self, bundle: typedefs.BundleTypes, timetag: typedefs.TimeTagTypes = None) -> int:
+        if not isinstance(bundle, bundles.Bundle):
+            bundle = bundles.Bundle(bundle, timetag)
+        elif timetag is not None:
+            raise ValueError('Cannot provide Bundle instance and timetag together')
+        logs.logger.debug('%r: sending %r', self, bundle)
+        count = lo.lo_send_bundle(self.lo_address, (<bundles.Bundle>bundle).lo_bundle)
+        self.check_send_error()
+        if count <= 0:
+            raise exceptions.SendError(count)
+        logs.logger.debug('%r: sent %s bytes', self, count)
+        return count
