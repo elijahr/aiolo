@@ -5,6 +5,11 @@ import socket
 import threading
 from typing import Union, Awaitable
 
+try:
+    import __pypy__
+except ImportError:
+    __pypy__ = None
+
 from cpython.ref cimport Py_INCREF, Py_DECREF
 
 
@@ -240,7 +245,7 @@ cdef class Server:
                 logs.logger.debug('%r: pending server events, will check in %ss', self, delay)
             # I am verklempt that passing a cdef void function to call_later actually works,
             # but it does! I'll just go with it because it is faster.
-            loop.call_later(0.1, self._server_recv_noblock, self, loop, True)
+            loop.call_later(0.1, self._server_recv_noblock, self, loop, False)
 
     @property
     def events_pending(self) -> bool:
@@ -276,53 +281,99 @@ cdef class Server:
         Py_DECREF(route)
         logs.logger.debug('%r: removed route %r' % (self, route))
 
-    def pub_from(
-        self,
-        route: Union[typedefs.RouteTypes],
-        *data: typedefs.MessageTypes
-    ) -> Awaitable[int]:
-        return self.pub_message_from(messages.Message(route, *data))
+    if __pypy__:
+        # PyPy doesn't correctly detect Cython coroutines so we have to do some hackry
+        # and return futures from vanilla functions.
+        def pub_from(
+            self,
+            route: Union[typedefs.RouteTypes],
+            *data: typedefs.MessageTypes
+        ) -> Awaitable[int]:
+            return self.pub_message_from(messages.Message(route, *data))
 
-    def pub_message_from(
-        self,
-        message: messages.Message,
-        address: Union[addresses.Address, None] = None,
-    ) -> Awaitable[int]:
-        cdef:
-            object fut = asyncio.Future()
-            int retval
-        if address is None:
-            address = self.multicast_address()
-        try:
+        def pub_message_from(
+            self,
+            message: messages.Message,
+            address: Union[addresses.Address, None] = None,
+        ) -> Awaitable[int]:
+            cdef:
+                object fut = asyncio.Future()
+                int retval
+            if address is None:
+                address = self.multicast_address()
+            try:
+                retval = (<messages.Message>message).send_from(address, self)
+            except Exception as exc:
+                fut.set_exception(exc)
+            else:
+                fut.set_result(retval)
+            return fut
+
+        def bundle_from(
+            self,
+            bundle: typedefs.BundleTypes,
+            timetag: typedefs.TimeTagTypes = None,
+            address: Union[addresses.Address, None] = None
+        ) -> Awaitable[int]:
+            cdef:
+                object fut = asyncio.Future()
+                int retval
+            if address is None:
+                address = self.multicast_address()
+            try:
+                if not isinstance(bundle, bundles.Bundle):
+                    bundle = bundles.Bundle(bundle, timetag)
+                elif timetag is not None:
+                    raise ValueError('Cannot provide Bundle instance and timetag together')
+                retval = (<bundles.Bundle>bundle).send_from(address, self)
+            except Exception as exc:
+                fut.set_exception(exc)
+            else:
+                fut.set_result(retval)
+            return fut
+    else:
+        async def pub_from(
+            self,
+            route: Union[typedefs.RouteTypes],
+            *data: typedefs.MessageTypes,
+        ) -> int:
+            retval = await self.pub_message_from(messages.Message(route, *data))
+            return retval
+
+        async def pub_message_from(
+            self,
+            message: messages.Message,
+            address: Union[addresses.Address, None] = None,
+        ) -> int:
+            if address is None:
+                address = self.multicast_address()
             retval = (<messages.Message>message).send_from(address, self)
-        except Exception as exc:
-            fut.set_exception(exc)
-        else:
-            fut.set_result(retval)
-        return fut
+            # This sleep is necessary for ... reasons, or the server doesn't receive any messages
+            # beyond the first. A sleep of 0 is not sufficient. Not sure if its a bug in my code,
+            # liblo, or CPython/asyncio. May only be an issue if the client and server are
+            # running in the same thread/event loop, as is the case with the unit tests.
+            # await asyncio.sleep(0.01)
+            return retval
 
-    def bundle_from(
-        self,
-        bundle: typedefs.BundleTypes,
-        timetag: typedefs.TimeTagTypes = None,
-        address: Union[addresses.Address, None] = None
-    ) -> Awaitable[int]:
-        cdef:
-            object fut = asyncio.Future()
-            int retval
-        if address is None:
-            address = self.multicast_address()
-        try:
+        async def bundle_from(
+            self,
+            bundle: typedefs.BundleTypes,
+            timetag: typedefs.TimeTagTypes = None,
+            address: Union[addresses.Address, None] = None,
+        ) -> int:
             if not isinstance(bundle, bundles.Bundle):
                 bundle = bundles.Bundle(bundle, timetag)
             elif timetag is not None:
                 raise ValueError('Cannot provide Bundle instance and timetag together')
+            if address is None:
+                address = self.multicast_address()
             retval = (<bundles.Bundle>bundle).send_from(address, self)
-        except Exception as exc:
-            fut.set_exception(exc)
-        else:
-            fut.set_result(retval)
-        return fut
+            # This sleep is necessary for ... reasons, or the server doesn't receive any messages
+            # beyond the first. A sleep of 0 is not sufficient. Not sure if its a bug in my code,
+            # liblo, or CPython/asyncio. May only be an issue if the client and server are
+            # running in the same thread/event loop, as is the case with the unit tests.
+            # await asyncio.sleep(0.01)
+            return retval
 
 
 def route_key(path: paths.Path, argdef: argdefs.Argdef):

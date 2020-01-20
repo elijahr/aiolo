@@ -94,21 +94,26 @@ def ipv6_servers():
 
 
 @pytest.fixture
-def client(server):
+async def client(server):
+    await asyncio.sleep(0.0000000000001)
     return aiolo.Client(url=server.url)
 
 
 @pytest.mark.asyncio
-async def test_multiple_clients(server):
+async def test_multiple_clients(event_loop, server):
     foo = server.route('/foo', str)
     client1 = aiolo.Client(url=server.url)
     client2 = aiolo.Client(url=server.url)
     client3 = aiolo.Client(url=server.url)
     task = create_task(subscribe(foo.sub(), 3))
-    # event_loop.call_later(2, task.cancel)
-    await client1.pub(foo, 'cliz1')
-    await client2.pub(foo, 'client2zzz')
-    await client3.pub(foo, 'clientzzzzzzzzzzzzzzzzz3')
+    event_loop.call_later(2, task.cancel)
+    await client1.pub(foo, 'client1')
+    # I am verklempt why this sleep is necessary, but it is, or the messages never get processed
+    await asyncio.sleep(0.0000000000001)
+    await client2.pub(foo, 'client2')
+    await asyncio.sleep(0.0000000000001)
+    await client3.pub(foo, 'client3')
+    await asyncio.sleep(0.0000000000001)
     results = await task
     assert results == [['client1'], ['client2'], ['client3']]
 
@@ -274,7 +279,7 @@ def test_timetag():
     assert aiolo.TimeTag(0) == aiolo.EPOCH_UTC
     assert int(aiolo.TimeTag(10)) == 10
     assert aiolo.TimeTag() == aiolo.TT_IMMEDIATE
-    assert int(aiolo.TimeTag().timestamp) == aiolo.EPOCH_UTC.timestamp()
+    assert int(aiolo.TimeTag().timestamp) == aiolo.EPOCH_OSC.timestamp()
 
     now_chicago = datetime.datetime.now(pytz.timezone('America/Chicago'))
     assert aiolo.TimeTag(now_chicago) == now_chicago
