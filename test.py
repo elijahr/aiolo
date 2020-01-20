@@ -3,6 +3,7 @@ import datetime
 import sys
 from typing import Union
 
+import netifaces
 import pytz
 
 import aiolo
@@ -11,7 +12,7 @@ import pytest
 import test_data
 
 
-CANCEL_TIMEOUT = 0.2
+CANCEL_TIMEOUT = 1
 
 
 def create_task(coro):
@@ -40,28 +41,131 @@ def server(event_loop):
 
 
 @pytest.fixture
+def multicast_server(event_loop):
+    server = aiolo.Server(multicast=aiolo.MultiCast('224.0.1.1', port=15432))
+    server.start()
+    yield server
+    server.stop()
+
+
+@pytest.fixture
+def interfaces_by_ipv4():
+    def get_ipv4(iface):
+        try:
+            return netifaces.ifaddresses(iface)[netifaces.AF_INET][0]['addr']
+        except KeyError:
+            return None
+
+    return {
+        get_ipv4(iface): iface
+        for iface in netifaces.interfaces()
+        if get_ipv4(iface)
+    }
+
+
+def get_interfaces_by_ipv6():
+    def get_ipv6(iface):
+        try:
+            print(netifaces.ifaddresses(iface)[netifaces.AF_INET6])
+            return netifaces.ifaddresses(iface)[netifaces.AF_INET6][0]['addr']
+        except KeyError:
+            return None
+    return {
+        get_ipv6(iface): iface
+        for iface in netifaces.interfaces()
+        if get_ipv6(iface)
+    }
+
+
+@pytest.fixture
+def interfaces_by_ipv6():
+    return get_interfaces_by_ipv6()
+
+
+def ipv6_servers():
+    for ip, iface in get_interfaces_by_ipv6().items():
+        # validate the url is valid
+        # ip = ip.replace('%'+iface, '')
+        ip = '::1:localhost'
+        try:
+            server = aiolo.Server(url='osc.tcp://[%s]:10000' % ip)
+            server.start()
+        except Exception as exc:
+            print(exc, ip, iface)
+        else:
+            print('YAY', ip, iface)
+            yield server
+            server.stop()
+
+
+@pytest.fixture
 def client(server):
     return aiolo.Client(url=server.url)
 
 
 @pytest.mark.asyncio
-async def test_multiple_clients(event_loop):
-    server = aiolo.Server(url='osc.tcp://:10001')
-    server.start()
+async def test_multiple_clients(server):
+    # server = aiolo.Server(url='osc.tcp://:10001')
+    # server.start()
     try:
         foo = server.route('/foo', str)
         client1 = aiolo.Client(url=server.url)
         client2 = aiolo.Client(url=server.url)
         client3 = aiolo.Client(url=server.url)
         task = create_task(subscribe(foo.sub(), 3))
-        event_loop.call_later(CANCEL_TIMEOUT, task.cancel)
-        await client1.pub(foo, 'client1')
-        await client2.pub(foo, 'client2')
-        await client3.pub(foo, 'client3')
+        # event_loop.call_later(2, task.cancel)
+        await client1.pub(foo, 'cliz1')
+        await client2.pub(foo, 'client2zzz')
+        await client3.pub(foo, 'clientzzzzzzzzzzzzzzzzz3')
         results = await task
         assert results == [['client1'], ['client2'], ['client3']]
     finally:
         server.stop()
+
+
+def test_client_interface_ipv4(server, interfaces_by_ipv4):
+    assert any(interfaces_by_ipv4)
+
+    for iface in interfaces_by_ipv4.values():
+        client = aiolo.Client(url=server.url)
+        client.interface = iface
+        assert client.interface == iface
+
+    for ipv4, iface in interfaces_by_ipv4.items():
+        client = aiolo.Client(url=server.url)
+        assert client.interface is None
+        client.set_ip(ipv4)
+        assert client.interface == iface
+
+    client = aiolo.Client(url=server.url)
+    with pytest.raises(ValueError):
+        client.interface = 'foobar0'
+    with pytest.raises(ValueError):
+        client.set_ip('foo.bar')
+    with pytest.raises(ValueError):
+        client.set_ip('1.2.3.4')
+
+
+@pytest.mark.no_ipv6
+def test_multicast(multicast_server):
+    pass
+
+
+@pytest.mark.ipv6
+@pytest.mark.parametrize('ipv6_server', ipv6_servers())
+def test_client_interface_ipv6(ipv6_server, interfaces_by_ipv6):
+    assert any(interfaces_by_ipv6)
+
+    for ipv6, iface in interfaces_by_ipv6.items():
+        client = aiolo.Client(url=ipv6_server.url)
+        assert client.interface is None
+        try:
+            client.set_ip(ipv6)
+        except Exception as exc:
+            aiolo.logger.exception(exc)
+        else:
+            print("SET THE IP")
+        assert client.interface == iface
 
 
 @pytest.mark.asyncio

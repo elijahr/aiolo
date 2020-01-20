@@ -2,21 +2,47 @@
 
 import asyncio
 import socket
+import threading
 
 from cpython.ref cimport Py_INCREF, Py_DECREF
 
 
-from . import exceptions, logs, routes, typedefs
-from . cimport argdefs, lo, paths
+from . import exceptions, ips, logs, routes, typedefs
+from . cimport argdefs, lo, multicasts, paths
+
+
+_SERVER_ERROR = threading.local()
+
+
+cdef char * NO_IFACE = <char*>0
+cdef char * NO_IP = <char*>0
+
+
+def pop_server_error():
+    try:
+        return getattr(_SERVER_ERROR, 'error')
+    except AttributeError:
+        return None
+    finally:
+        try:
+            delattr(_SERVER_ERROR, 'errors')
+        except AttributeError:
+            pass
+
+def set_server_error(msg: str):
+    setattr(_SERVER_ERROR, 'error', msg)
 
 
 cdef class Server:
-    def __cinit__(self, *, url: str):
+    def __cinit__(self, *, url: str = None, multicast: multicasts.MultiCast = None):
+        if url and multicast:
+            raise ValueError('Provide either url or multicast, not both (got %r, %r)' % (url, multicast))
         self.url = url
+        self.multicast = multicast
         self.routing = {}
         self.lo_server = NULL
 
-    def __init__(self, *, url: str):
+    def __init__(self, *, url: str = None, multicast: multicasts.MultiCast = None):
         pass
 
     def __dealloc__(self):
@@ -25,7 +51,7 @@ cdef class Server:
             self.lo_server = NULL
 
     def __repr__(self):
-        return 'Server(%r)' % self.url
+        return 'Server(%r, %r)' % (self.url, self.multicast)
 
     @property
     def running(self):
@@ -33,15 +59,58 @@ cdef class Server:
 
     @property
     def port(self):
+        if self.lo_server is not NULL:
+            return lo.lo_server_get_port(self.lo_server)
         burl = self.url.encode('utf8')
         return lo.lo_url_get_port(burl)
 
+    @property
+    def protocol(self):
+        if self.lo_server is not NULL:
+            return lo.lo_server_get_protocol(self.lo_server)
+        burl = self.url.encode('utf8')
+        return lo.lo_url_get_protocol(burl)
+
     def start(self):
+        cdef:
+            char * iface
+            char * ip
+            multicasts.MultiCast multicast
         if self.running:
             raise exceptions.StartError('Server already running, cannot start again')
-        burl = self.url.encode('utf8')
-        self.lo_server = lo.lo_server_new_from_url(burl, on_error)
+
+        # Clear any previous errors for this thread, to ensure correct exception output.
+        # The error should have been logged already anyways.
+        pop_server_error()
+
+        if self.url:
+            burl = self.url.encode('utf8')
+            self.lo_server = lo.lo_server_new_from_url(burl, on_error)
+        elif self.multicast:
+            multicast = <multicasts.MultiCast>self.multicast
+            if multicast._iface:
+                iface = multicast._iface
+            else:
+                iface = NO_IFACE
+            if multicast._ip:
+                ip = multicast._ip
+            else:
+                ip = NO_IP
+            self.lo_server = lo.lo_server_new_multicast_iface(multicast._group, multicast._port, iface, ip, on_error)
+        else:
+            # Shouldn't get here, but JIC
+            raise ValueError('Server cannot be started without a url or multicast')
+
         if self.lo_server is NULL:
+            # Hackery, since the error is propagated to a callback which has no reference to
+            # the server instance.
+            server_error = pop_server_error()
+            if server_error is not None:
+                if self.url:
+                    msg = '%s (url=%r)' % (server_error, self.url)
+                else:
+                    msg = '%s (multicast=%r)' % (server_error, self.multicast)
+                raise exceptions.StartError(msg)
             raise MemoryError
 
         lo.lo_server_enable_queue(self.lo_server, 1, 0)
@@ -117,26 +186,30 @@ cdef class Server:
 
     def _on_sock_readable(self, loop):
         logs.logger.debug('%r: incoming data on socket', self)
-        self._server_recv_noblock(loop)
+        self._server_recv_noblock(loop, True)
 
-    cdef void _server_recv_noblock(Server self, object loop):
+    cdef void _server_recv_noblock(Server self, object loop, bint retry):
         cdef:
-            int count
+            int count = -1
             double delay
 
-        while True:
+        while count != 0:
             count = lo.lo_server_recv_noblock(self.lo_server, 0)
+            logs.logger.debug('%r: processed %r bytes', self, count)
             if count == 0:
                 break
-            logs.logger.debug('%r: processed %r bytes', self, count)
+
+        if retry:
+            delay = 0.5
 
         # Check for scheduled bundles
-        if lo.lo_server_events_pending(self.lo_server):
-            delay = lo.lo_server_next_event_delay(self.lo_server)
-            logs.logger.debug('%r: pending server events, will check in %ss', self, delay)
+        if retry or lo.lo_server_events_pending(self.lo_server):
+            if not delay:
+                delay = lo.lo_server_next_event_delay(self.lo_server)
+                logs.logger.debug('%r: pending server events, will check in %ss', self, delay)
             # I am verklempt that passing a cdef void function to call_later actually works,
             # but it does! I'll just go with it because it is faster.
-            loop.call_later(delay, self._server_recv_noblock, self, loop)
+            loop.call_later(0.1, self._server_recv_noblock, self, loop, True)
 
     @property
     def events_pending(self) -> bool:
@@ -177,12 +250,12 @@ def route_key(path: paths.Path, argdef: argdefs.Argdef):
     return '%r:%r' % (path, argdef)
 
 
-cdef void on_error(int num, const char *msg, const char *path) nogil:
+cdef void on_error(int num, const char *m, const char *path) nogil:
     with gil:
-        m = (<bytes>msg)
-        m = m.decode('utf8')
-        logs.logger.error("liblo server error %s: %s" % (num, m))
-
+        msg = (<bytes>m).decode('utf8')
+        msg = "liblo server error %s: %s" % (num, msg)
+        logs.logger.error(msg)
+        set_server_error(msg)
 
 
 cdef int router(

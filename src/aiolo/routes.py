@@ -80,6 +80,7 @@ class Sub(collections.abc.AsyncIterator):
             msg = await self.inbox.get()
             logs.logger.debug('%r: got item from inbox %r', self, msg)
             self.inbox.task_done()
+            await asyncio.sleep(0.01)
             if isinstance(msg, Exception):
                 raise msg
         except (exceptions.Unsubscribed, GeneratorExit):

@@ -27,6 +27,10 @@ cdef class Message:
             (<paths.Path>self.route.path).charp(),
             self.lo_message
         )
+        if lo.lo_address_errno(lo_address):
+            raise exceptions.SendError(
+                '%s (%s)' % ((<bytes>lo.lo_address_errstr(lo_address)).decode('utf8'),
+                             str(lo.lo_address_errno(lo_address))))
         if count <= 0:
             raise exceptions.SendError(count)
         logs.logger.debug('%r: sent %s bytes', self, count)

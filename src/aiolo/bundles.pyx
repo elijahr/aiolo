@@ -76,6 +76,10 @@ cdef class Bundle:
     cdef object send(self, lo.lo_address lo_address):
         logs.logger.debug('%r: sending', self)
         count = lo.lo_send_bundle(lo_address, self.lo_bundle)
+        if lo.lo_address_errno(lo_address):
+            raise exceptions.SendError(
+                '%s (%s)' % ((<bytes>lo.lo_address_errstr(lo_address)).decode('utf8'),
+                             str(lo.lo_address_errno(lo_address))))
         if count <= 0:
             raise exceptions.SendError(count)
         logs.logger.debug('%r: sent %s bytes', self, count)

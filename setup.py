@@ -52,15 +52,17 @@ setup(
             'pyaudio',
         ],
         'test': [
+            'netifaces',
             'pytest',
             'pytest-asyncio',
             'pytz',
         ],
         'dev': [
+            'netifaces',
             'pytest',
             'pytest-asyncio',
-            'pytz',
             'pytest-watch',
+            'pytz',
         ]
     },
     classifiers=[
