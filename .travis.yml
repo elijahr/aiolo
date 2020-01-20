@@ -24,18 +24,19 @@ matrix:
   include:
     - os: linux
       env: DEBIAN_FRONTEND=noninteractive
-      python:
-        - "3.6"
-        - "3.7"
-        - "3.8"
-        - "pypy3"
+      python: "3.6"
+    - os: linux
+      env: DEBIAN_FRONTEND=noninteractive
+      python: "3.7"
     - os: linux
       env: DEBIAN_FRONTEND=noninteractive RELEASER=1
       python: "3.8"
     - os: linux
+      env: DEBIAN_FRONTEND=noninteractive
+      python: "pypy3"
+    - os: linux
       env: DEBIAN_FRONTEND=noninteractive IPV6=1
       python: "3.8"
-
     - os: osx
       env: CPYTHON_VERSION=3.6.8 PYTHON_PATH=/usr/local/bin/python3.6
       language: generic
@@ -54,19 +55,19 @@ install:
     case $TRAVIS_OS_NAME in
       linux)
         if [[ "x1" = "$IPV6" ]]; then
-          git clone https://github.com/radarsat1/liblo.git
-          pushd liblo
-          git checkout tags/0.30
-          sudo mkdir -p /usr/local/opt/
-          ./autogen.sh --prefix /usr/local/opt/(basename (pwd)) --enable-ipv6
-          ./configure --prefix /usr/local/opt/(basename (pwd)) --enable-ipv6
-          make
-          sudo make install
-          popd
+          git clone https://github.com/radarsat1/liblo.git;
+          pushd liblo;
+          git checkout tags/0.30;
+          sudo mkdir -p /usr/local/opt/;
+          ./autogen.sh --prefix /usr/local/opt/(basename (pwd)) --enable-ipv6;
+          ./configure --prefix /usr/local/opt/(basename (pwd)) --enable-ipv6;
+          make;
+          sudo make install;
+          popd;
         else
-          sudo apt-get install liblo7 liblo-dev
+          sudo apt-get install liblo7 liblo-dev;
         fi
-        sudo pip install pipenv
+        sudo pip install pipenv;
         pipenv install --python `which python` --skip-lock;
         ;;
       osx)
@@ -89,4 +90,4 @@ install:
   - pipenv run pip install --editable ".[test]"
 
 script:
-  - pipenv run py.test --verbose `(test $IPV6 && echo '--ipv6') || echo ''` test.py
+  - pipenv run py.test --verbose `(test "x$IPV6" != "x" && echo '--ipv6') || echo ''` test.py
