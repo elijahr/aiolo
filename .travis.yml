@@ -59,8 +59,8 @@ install:
           pushd liblo;
           git checkout tags/0.30;
           sudo mkdir -p /usr/local/opt/;
-          ./autogen.sh --prefix /usr/local/opt/(basename (pwd)) --enable-ipv6;
-          ./configure --prefix /usr/local/opt/(basename (pwd)) --enable-ipv6;
+          ./autogen.sh --prefix /usr/local/opt/$(basename $(pwd)) --enable-ipv6;
+          ./configure --prefix /usr/local/opt/$(basename $(pwd)) --enable-ipv6;
           make;
           sudo make install;
           popd;
