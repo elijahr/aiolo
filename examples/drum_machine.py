@@ -114,9 +114,9 @@ class Machine:
             self.loop.call_at(timetag.timestamp, self.exit)
             break
 
-    def exit(self):
+    async def exit(self):
         for sub in self.subs.values():
-            sub.unsub()
+            await sub.unsub()
 
         self.stream.stop_stream()
         self.stream.close()
@@ -154,9 +154,9 @@ def subscribe():
 
 def publish():
     timetag = aiolo.TimeTag(asyncio.get_event_loop().time()+5)
-    client = aiolo.Client(url=OSC_SERVER)
+    address = aiolo.Address(url=OSC_SERVER)
     # send the sequence as a timestamped bundle
-    client.bundle(
+    address.bundle(
         aiolo.Message(route, timetag + (STEP * i))
         for i, route in enumerate(SEQUENCE)
     )
