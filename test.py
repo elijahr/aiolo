@@ -12,7 +12,7 @@ import pytest
 import test_data
 
 
-CANCEL_TIMEOUT = 1
+CANCEL_TIMEOUT = 2
 
 
 def create_task(coro):
