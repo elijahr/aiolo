@@ -250,11 +250,10 @@ def route_key(path: paths.Path, argdef: argdefs.Argdef):
 
 cdef void on_error(int num, const char *m, const char *path) nogil:
     with gil:
-        if num != 0:
-            msg = (<bytes>m).decode('utf8')
-            msg = "liblo server error %s: %s" % (num, msg)
-            logs.logger.error(msg)
-            set_server_error(msg)
+        msg = (<bytes>m).decode('utf8')
+        msg = "liblo server error %s: %s" % (num, msg)
+        logs.logger.error(msg)
+        set_server_error(msg)
 
 
 cdef int router(
