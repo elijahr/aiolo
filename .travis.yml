@@ -66,6 +66,7 @@ install:
           sudo apt-get install liblo7 liblo-dev;
         fi
         sudo pip install pipenv;
+        pipenv install --python `which python` --skip-lock;
         ;;
       osx)
         brew update;
@@ -81,20 +82,12 @@ install:
           curl -s -L "https://www.python.org/ftp/python/$CPYTHON_VERSION/python-$CPYTHON_VERSION-macosx10.9.pkg" --output python.pkg;
           sudo installer -pkg python.pkg -target /;
         fi
+        pipenv install --python "$PYTHON_PATH" --skip-lock;
         ;;
       esac
 
 script:
-  - |
-    case $TRAVIS_OS_NAME in
-      linux)
-        pipenv install --python `which python` --skip-lock;
-        ;;
-      osx)
-        pipenv install --python "$PYTHON_PATH" --skip-lock;
-        ;;
-    esac
-
   - pipenv run pip install --editable ".[test]"
+  - pipenv run python setup.py install
   - pipenv run python -c "import aiolo"
-  - pipenv run "$(pipenv --venv)/bin/py.test" --verbose `(test "x$IPV6" != "x" && echo '--ipv6') || echo ''` test.py
+  - pipenv run pytest --verbose `(test "x$IPV6" != "x" && echo '--ipv6') || echo ''` test.py
