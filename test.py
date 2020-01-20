@@ -77,7 +77,7 @@ def interfaces_by_ipv4():
 def get_interfaces_by_ipv6():
     def get_ipv6(iface):
         try:
-            print(netifaces.ifaddresses(iface)[netifaces.AF_INET6])
+            print(iface, netifaces.ifaddresses(iface)[netifaces.AF_INET6])
             return netifaces.ifaddresses(iface)[netifaces.AF_INET6][0]['addr']
         except KeyError:
             return None

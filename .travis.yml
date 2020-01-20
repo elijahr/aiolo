@@ -85,9 +85,8 @@ install:
         pipenv install --python "$PYTHON_PATH" --skip-lock;
         ;;
       esac
+    - pipenv run pip install --editable ".[test]"
+    - pipenv run python setup.py install
 
 script:
-  - pipenv run pip install --editable ".[test]"
-  - pipenv run python setup.py install
-  - pipenv run python -c "import aiolo"
   - pipenv run pytest --verbose `(test "x$IPV6" != "x" && echo '--ipv6') || echo ''` test.py
