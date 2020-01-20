@@ -15,14 +15,6 @@ cdef class MultiCast:
         iface: Union[bytes, str, None] = None,
         ip: Union[bytes, str] = None
     ):
-        if isinstance(port, str):
-            port = port.encode('utf8')
-        if isinstance(port, int):
-            port = str(port).encode('utf8')
-        if isinstance(iface, str):
-            iface = iface.encode('utf8')
-        if isinstance(ip, str):
-            ip = ip.encode('utf8')
         self.group = group
         self.port = port
         self.iface = iface
@@ -38,69 +30,58 @@ cdef class MultiCast:
     ):
         pass
 
+    def __repr__(self):
+        return 'MultiCast(%r, %r, iface=%r, ip=%r)' % (self.group, self.port, self.iface, self.ip)
+
     @property
     def group(self):
-        return (<bytes>self._group).decode('utf8') if self._group is not NULL else None
+        return (<bytes>self._group).decode('utf8') if self._group is not None else None
 
     @group.setter
     def group(self, value):
-        cdef char * val = NULL
         if isinstance(value, str):
             value = value.encode('utf8')
-        if isinstance(value, bytes):
-            val = <char*>value
-        else:
+        if not isinstance(value, bytes):
             raise ValueError('Invalid value for group %s' % repr(value))
         if not ips.is_valid_ip_address(value):
             raise ValueError('Invalid value for group %s, not an IP address' % repr(value))
-        self._group = val
+        self._group = value
 
     @property
     def port(self):
-        return (<bytes>self._port).decode('utf8') if self._port is not NULL else None
+        return self._port.decode('utf8') if self._port is not None else None
 
     @port.setter
     def port(self, value):
         cdef char * val = NULL
         if isinstance(value, str):
             value = value.encode('utf8')
-        if isinstance(value, bytes):
-            val = <char*>value
-        elif value is not None:
+        elif isinstance(value, int):
+            value = str(value).encode('utf8')
+        if value is not None and not isinstance(value, bytes):
             raise ValueError('Invalid value for port %s' % repr(value))
-        self._port = val
+        self._port = value
 
     @property
     def iface(self):
-        return (<bytes>self._iface).decode('utf8') if self._iface is not NULL else None
+        return self._iface.decode('utf8') if self._iface is not None else None
 
     @iface.setter
     def iface(self, value):
-        cdef char * val = NULL
         if isinstance(value, str):
             value = value.encode('utf8')
-        if isinstance(value, bytes):
-            val = <char*>value
-        elif value is not None:
+        if value is not None and not isinstance(value, bytes):
             raise ValueError('Invalid value for iface %s' % repr(value))
-        self._iface = val
+        self._iface = value
 
     @property
     def ip(self):
-        return (<bytes>self._ip).decode('utf8') if self._ip is not NULL else None
+        return self._ip.decode('utf8') if self._ip is not None else None
 
     @ip.setter
     def ip(self, value):
-        cdef char * val = NULL
         if isinstance(value, str):
             value = value.encode('utf8')
-        if isinstance(value, bytes):
-            val = <char*>value
-        elif value is not None:
+        if value is not None and not isinstance(value, bytes) and not ips.is_valid_ip_address(value):
             raise ValueError('Invalid value for ip %s' % repr(value))
-        if value is not None and not ips.is_valid_ip_address(value):
-            raise ValueError('Invalid value for group %s, not an IP address' % repr(value))
-        self._ip = val
-
-    def __repr__(self):
-        return 'MultiCast(%r, %r, iface=%r, ip=%r)' % (self.group, self.port, self.iface, self.ip)
+        self._ip = value

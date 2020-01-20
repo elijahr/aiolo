@@ -4,7 +4,7 @@ from typing import Iterable
 
 from .timetags import TT_IMMEDIATE
 from . import exceptions, logs, typedefs
-from . cimport lo, messages, paths, timetags
+from . cimport addresses, lo, messages, paths, servers, timetags
 
 
 cdef class Bundle:
@@ -73,8 +73,25 @@ cdef class Bundle:
         self.msgs.append(bundle)
         return None
 
-    cdef object send(self, lo.lo_address lo_address):
-        logs.logger.debug('%r: sending', self)
+    cpdef int send_from(Bundle self, addresses.Address address, servers.Server server):
+        cdef:
+            lo.lo_address lo_address = (<addresses.Address>address).lo_address
+            lo.lo_server lo_server = (<servers.Server>server).lo_server
+        logs.logger.debug('%r: sending to %r from %r', self, address, server)
+
+        count = lo.lo_send_bundle_from(lo_address, lo_server, self.lo_bundle)
+
+        if lo.lo_address_errno(lo_address):
+            raise exceptions.SendError(
+                '%s (%s)' % ((<bytes>lo.lo_address_errstr(lo_address)).decode('utf8'),
+                             str(lo.lo_address_errno(lo_address))))
+        if count <= 0:
+            raise exceptions.SendError(count)
+        logs.logger.debug('%r: sent %s bytes', self, count)
+
+    cpdef int send(Bundle self, addresses.Address address):
+        cdef lo.lo_address lo_address = (<addresses.Address>address).lo_address
+        logs.logger.debug('%r: sending to %r', self, address)
         count = lo.lo_send_bundle(lo_address, self.lo_bundle)
         if lo.lo_address_errno(lo_address):
             raise exceptions.SendError(

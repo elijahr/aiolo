@@ -3,12 +3,13 @@
 import asyncio
 import socket
 import threading
+from typing import Union, Awaitable
 
 from cpython.ref cimport Py_INCREF, Py_DECREF
 
 
-from . import exceptions, ips, logs, routes, typedefs
-from . cimport argdefs, lo, multicasts, paths
+from . import exceptions, logs, routes, typedefs
+from . cimport addresses, argdefs, bundles, clients, lo, messages, multicasts, paths
 
 
 _SERVER_ERROR = threading.local()
@@ -51,7 +52,32 @@ cdef class Server:
             self.lo_server = NULL
 
     def __repr__(self):
-        return 'Server(%r, %r)' % (self.url, self.multicast)
+        if self.url:
+            return 'Server(url=%r)' % self.url
+        return 'Server(multicast=%r)' % self.multicast
+
+    def multicast_address(self, no_delay: bool = False, stream_slip: bool = False, ttl: int = 1):
+        if self.url:
+            return addresses.Address(
+                url=self.url, no_delay=no_delay, stream_slip=stream_slip, ttl=ttl)
+        return addresses.Address(
+            protocol=self.protocol,
+            host=self.multicast.group,
+            port=self.multicast.port,
+            no_delay=no_delay,
+            stream_slip=stream_slip,
+            ttl=ttl)
+    #
+    # def client(self, no_delay: bool = False, stream_slip: bool = False, ttl: int = 1):
+    #     if self.url:
+    #         return clients.Client(url=self.url, no_delay=no_delay, stream_slip=stream_slip, ttl=ttl)
+    #     return clients.Client(
+    #         protocol=self.protocol,
+    #         host=self.multicast.group,
+    #         port=self.multicast.port,
+    #         no_delay=no_delay,
+    #         stream_slip=stream_slip,
+    #         ttl=ttl)
 
     @property
     def running(self):
@@ -70,6 +96,11 @@ cdef class Server:
             return lo.lo_server_get_protocol(self.lo_server)
         burl = self.url.encode('utf8')
         return lo.lo_url_get_protocol(burl)
+
+    # @property
+    # def host(self):
+    #     if self.lo_server is not NULL:
+    #         return lo.lo_server_get_hostname()
 
     def start(self):
         cdef:
@@ -244,6 +275,54 @@ cdef class Server:
         # Unsteal ref
         Py_DECREF(route)
         logs.logger.debug('%r: removed route %r' % (self, route))
+
+    def pub_from(
+        self,
+        route: Union[typedefs.RouteTypes],
+        *data: typedefs.MessageTypes
+    ) -> Awaitable[int]:
+        return self.pub_message_from(messages.Message(route, *data))
+
+    def pub_message_from(
+        self,
+        message: messages.Message,
+        address: Union[addresses.Address, None] = None,
+    ) -> Awaitable[int]:
+        cdef:
+            object fut = asyncio.Future()
+            int retval
+        if address is None:
+            address = self.multicast_address()
+        try:
+            retval = (<messages.Message>message).send_from(address, self)
+        except Exception as exc:
+            fut.set_exception(exc)
+        else:
+            fut.set_result(retval)
+        return fut
+
+    def bundle_from(
+        self,
+        bundle: typedefs.BundleTypes,
+        timetag: typedefs.TimeTagTypes = None,
+        address: Union[addresses.Address, None] = None
+    ) -> Awaitable[int]:
+        cdef:
+            object fut = asyncio.Future()
+            int retval
+        if address is None:
+            address = self.multicast_address()
+        try:
+            if not isinstance(bundle, bundles.Bundle):
+                bundle = bundles.Bundle(bundle, timetag)
+            elif timetag is not None:
+                raise ValueError('Cannot provide Bundle instance and timetag together')
+            retval = (<bundles.Bundle>bundle).send_from(address, self)
+        except Exception as exc:
+            fut.set_exception(exc)
+        else:
+            fut.set_result(retval)
+        return fut
 
 
 def route_key(path: paths.Path, argdef: argdefs.Argdef):

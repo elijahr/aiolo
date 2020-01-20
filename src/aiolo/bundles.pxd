@@ -1,7 +1,7 @@
 # cython: language_level=3
 
 from . import typedefs
-from . cimport lo, messages
+from . cimport addresses, lo, messages, servers
 
 cdef class Bundle:
     cdef object timetag
@@ -10,4 +10,5 @@ cdef class Bundle:
     cpdef object add(Bundle self, msg: typedefs.BundleTypes)
     cpdef object add_message(Bundle self, messages.Message message)
     cpdef object add_bundle(Bundle self, Bundle bundle)
-    cdef object send(self, lo.lo_address lo_address)
+    cpdef int send_from(Bundle self, addresses.Address address, servers.Server server)
+    cpdef int send(Bundle self, addresses.Address address)

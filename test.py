@@ -42,7 +42,8 @@ def server(event_loop):
 
 @pytest.fixture
 def multicast_server(event_loop):
-    server = aiolo.Server(multicast=aiolo.MultiCast('224.0.1.1', port=15432))
+    multicast = aiolo.MultiCast('224.0.1.1', port=15432)
+    server = aiolo.Server(multicast=multicast)
     server.start()
     yield server
     server.stop()
@@ -83,19 +84,13 @@ def interfaces_by_ipv6():
 
 
 def ipv6_servers():
+    if '--ipv6' not in sys.argv:
+        return
     for ip, iface in get_interfaces_by_ipv6().items():
-        # validate the url is valid
-        # ip = ip.replace('%'+iface, '')
-        ip = '::1:localhost'
-        try:
-            server = aiolo.Server(url='osc.tcp://[%s]:10000' % ip)
-            server.start()
-        except Exception as exc:
-            print(exc, ip, iface)
-        else:
-            print('YAY', ip, iface)
-            yield server
-            server.stop()
+        server = aiolo.Server(url='osc.tcp://[%s]:10000' % ip)
+        server.start()
+        yield server
+        server.stop()
 
 
 @pytest.fixture
@@ -105,22 +100,17 @@ def client(server):
 
 @pytest.mark.asyncio
 async def test_multiple_clients(server):
-    # server = aiolo.Server(url='osc.tcp://:10001')
-    # server.start()
-    try:
-        foo = server.route('/foo', str)
-        client1 = aiolo.Client(url=server.url)
-        client2 = aiolo.Client(url=server.url)
-        client3 = aiolo.Client(url=server.url)
-        task = create_task(subscribe(foo.sub(), 3))
-        # event_loop.call_later(2, task.cancel)
-        await client1.pub(foo, 'cliz1')
-        await client2.pub(foo, 'client2zzz')
-        await client3.pub(foo, 'clientzzzzzzzzzzzzzzzzz3')
-        results = await task
-        assert results == [['client1'], ['client2'], ['client3']]
-    finally:
-        server.stop()
+    foo = server.route('/foo', str)
+    client1 = aiolo.Client(url=server.url)
+    client2 = aiolo.Client(url=server.url)
+    client3 = aiolo.Client(url=server.url)
+    task = create_task(subscribe(foo.sub(), 3))
+    # event_loop.call_later(2, task.cancel)
+    await client1.pub(foo, 'cliz1')
+    await client2.pub(foo, 'client2zzz')
+    await client3.pub(foo, 'clientzzzzzzzzzzzzzzzzz3')
+    results = await task
+    assert results == [['client1'], ['client2'], ['client3']]
 
 
 def test_client_interface_ipv4(server, interfaces_by_ipv4):
@@ -147,8 +137,16 @@ def test_client_interface_ipv4(server, interfaces_by_ipv4):
 
 
 @pytest.mark.no_ipv6
-def test_multicast(multicast_server):
-    pass
+@pytest.mark.asyncio
+async def test_multicast(event_loop, multicast_server):
+    foo = multicast_server.route('/foo', str)
+    task = create_task(subscribe(foo.sub(), 3))
+    event_loop.call_later(CANCEL_TIMEOUT, task.cancel)
+    multicast_server.pub_from(foo, 'foo')
+    multicast_server.pub_from(foo, 'bar')
+    multicast_server.pub_from(foo, 'baz')
+    results = await task
+    assert results == [['foo'], ['bar'], ['baz']]
 
 
 @pytest.mark.ipv6
