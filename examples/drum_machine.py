@@ -111,8 +111,11 @@ class Machine:
 
     async def sub_exit(self):
         async for (timetag, ) in EXIT.sub():
-            self.loop.call_at(timetag.timestamp, self.exit)
+            self.loop.call_at(timetag.timestamp, self.exit_task)
             break
+
+    def exit_task(self):
+        self.loop.create_task(self.exit())
 
     async def exit(self):
         for sub in self.subs.values():
