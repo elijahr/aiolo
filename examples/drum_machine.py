@@ -20,7 +20,7 @@ import pyaudio
 
 PATH = os.path.dirname(os.path.abspath(__file__))
 
-OSC_SERVER = 'osc.udp://:10033'
+SERVER_URL = 'osc.udp://:10033'
 
 RATE = 44100
 BPM = 120
@@ -28,14 +28,14 @@ BPM = 120
 STEP = 4 / 16 * (60 / BPM)
 FRAMES_PER_STEP = int(RATE * STEP)
 
-KICK = aiolo.Route('/kick', aiolo.TIMETAG)
-C_HAT = aiolo.Route('/c_hat', aiolo.TIMETAG)
-O_HAT = aiolo.Route('/o_hat', aiolo.TIMETAG)
-SNARE = aiolo.Route('/snare', aiolo.TIMETAG)
-CLAP = aiolo.Route('/clap', aiolo.TIMETAG)
-COWBELL = aiolo.Route('/cowbell', aiolo.TIMETAG)
-AIRHORN = aiolo.Route('/airhorn', aiolo.TIMETAG)
-EXIT = aiolo.Route('/exit', aiolo.TIMETAG)
+KICK = aiolo.Route('/kick', float)
+C_HAT = aiolo.Route('/c_hat', float)
+O_HAT = aiolo.Route('/o_hat', float)
+SNARE = aiolo.Route('/snare', float)
+CLAP = aiolo.Route('/clap', float)
+COWBELL = aiolo.Route('/cowbell', float)
+AIRHORN = aiolo.Route('/airhorn', float)
+EXIT = aiolo.Route('/exit', float)
 
 SEQUENCE = ((
     KICK, C_HAT, O_HAT, C_HAT,
@@ -82,7 +82,7 @@ class Machine:
     def __init__(self):
         self.loop = asyncio.get_event_loop()
         asyncio.set_event_loop(self.loop)
-        self.server = aiolo.Server(url=OSC_SERVER)
+        self.server = aiolo.Server(url=SERVER_URL)
         self.server.route(EXIT)
         self.subs = {}
         for route in DRUM_ROUTES:
@@ -110,8 +110,8 @@ class Machine:
         ])
 
     async def sub_exit(self):
-        async for (timetag, ) in EXIT.sub():
-            self.loop.call_at(timetag.timestamp, self.exit_task)
+        async for (stamp, ) in EXIT.sub():
+            self.loop.call_at(stamp, self.exit_task)
             break
 
     def exit_task(self):
@@ -131,9 +131,12 @@ class Machine:
         def play():
             self.stream.write(wav)
 
-        async for (timetag, ) in sub:
+        async for (stamp, ) in sub:
             # sub will yield anytime it receives a trigger
-            self.loop.call_at(timetag.timestamp, play)
+            if stamp < self.loop.time():
+                # skip outdated items
+                print('Skipping timestamp %r, its in the past' % stamp)
+            self.loop.call_at(stamp, play)
 
 
 def get_wav(route):
@@ -156,13 +159,16 @@ def subscribe():
 
 
 def publish():
-    timetag = aiolo.TimeTag(asyncio.get_event_loop().time()+5)
-    address = aiolo.Address(url=OSC_SERVER)
-    # send the sequence as a timestamped bundle
-    address.bundle(
-        aiolo.Message(route, timetag + (STEP * i))
+    start = asyncio.get_event_loop().time() + 5
+    address = aiolo.Address(url=SERVER_URL)
+    # send the sequence as a timestamped bundle.
+    # note that timestamps are not wall clock timestamps (we'd use TimeTag for those),
+    # they are asyncio monotonic clock timestamps
+    bundle = aiolo.Bundle([
+        aiolo.Message(route, start + (STEP * i))
         for i, route in enumerate(SEQUENCE)
-    )
+    ])
+    address.bundle(bundle)
 
 
 def config_logging():
