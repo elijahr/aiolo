@@ -25,11 +25,10 @@ class build_ext(_build_ext):
 
 def get_cython_compile_time_env():
     try:
-        lo_version = subprocess.run(
+        lo_version = subprocess.check_output(
             ['pkg-config', '--modversion', 'liblo'],
-            capture_output=True
-        ).stdout.strip().decode('utf8') or '0.29'
-    except FileNotFoundError:
+        ).strip().decode('utf8') or '0.29'
+    except (subprocess.CalledProcessError, FileNotFoundError):
         lo_version = '0.29'
     return dict(LO_VERSION=lo_version)
 
