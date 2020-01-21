@@ -5,7 +5,7 @@ from cpython.ref cimport Py_INCREF, Py_DECREF
 
 
 from . import exceptions, logs, routes, typedefs
-from . cimport argdefs, lo, multicasts, paths
+from . cimport addresses, argdefs, lo, multicasts, paths
 
 
 _SERVER_START_ERROR = None
@@ -40,15 +40,21 @@ cdef class AbstractServer:
     def port(self):
         if self.running:
             return lo.lo_server_get_port(self.lo_server())
-        burl = self.url.encode('utf8')
-        return lo.lo_url_get_port(burl)
+        elif self.url:
+            burl = self.url.encode('utf8')
+            return lo.lo_url_get_port(burl)
+        return self.multicast.port
 
     @property
     def protocol(self):
         if self.running:
             return lo.lo_server_get_protocol(self.lo_server())
-        burl = self.url.encode('utf8')
-        return lo.lo_url_get_protocol(burl)
+        elif self.url:
+            burl = self.url.encode('utf8')
+            return lo.lo_url_get_protocol(burl)
+        # multicast uses UDP, of course
+        from aiolo import PROTO_UDP
+        return PROTO_UDP
 
     @property
     def queue_enabled(self):

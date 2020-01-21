@@ -1,5 +1,5 @@
 # cython: language_level=3
-import asyncio
+
 from typing import Union
 
 from . import exceptions, ips, logs, typedefs
