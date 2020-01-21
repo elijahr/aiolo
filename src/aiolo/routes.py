@@ -1,21 +1,25 @@
 import asyncio
 import collections.abc
-from typing import Union, Any
+from typing import Union
 
 from . import argdefs, exceptions, logs, paths, typedefs
 
 
 class Route:
-    __slots__ = ('path', 'argdef', 'subs')
+    __slots__ = ('path', 'argdef', 'subs', 'loop')
 
     def __init__(
         self,
         path: typedefs.PathTypes,
-        argdef: typedefs.ArgdefTypes = None
+        argdef: typedefs.ArgdefTypes = None,
+        loop: asyncio.AbstractEventLoop = None,
     ):
         self.subs = []
         self.path = path if isinstance(path, paths.Path) else paths.Path(path)
         self.argdef = argdef if isinstance(argdef, argdefs.Argdef) else argdefs.Argdef(argdef)
+        if loop is None:
+            loop = asyncio.get_event_loop()
+        self.loop = loop
 
     def __repr__(self):
         return 'Route(%r, %r)' % (self.path, self.argdef)
@@ -36,7 +40,14 @@ class Route:
     def is_pattern(self) -> bool:
         return self.path.is_pattern
 
-    async def pub(self, item: Any):
+    def pub_soon_threadsafe(self, item: typedefs.PubTypes):
+        self.loop.call_soon_threadsafe(self.pub_nowait, item)
+
+    def pub_nowait(self, item: typedefs.PubTypes):
+        for s in self.subs:
+            s.pub_nowait(item)
+
+    async def pub(self, item: typedefs.PubTypes):
         await asyncio.gather(*[
             s.pub(item)
             for s in self.subs
@@ -74,13 +85,12 @@ class Sub(collections.abc.AsyncIterator):
     def __aiter__(self) -> 'Sub':
         return self
 
-    async def __anext__(self) -> Any:
+    async def __anext__(self) -> typedefs.PubTypes:
         try:
             logs.logger.debug('%r: waiting for next item in inbox...', self)
             msg = await self.inbox.get()
             logs.logger.debug('%r: got item from inbox %r', self, msg)
             self.inbox.task_done()
-            await asyncio.sleep(0.01)
             if isinstance(msg, Exception):
                 raise msg
         except (exceptions.Unsubscribed, GeneratorExit):
@@ -88,7 +98,11 @@ class Sub(collections.abc.AsyncIterator):
         else:
             return msg
 
-    async def pub(self, item: Any):
+    def pub_nowait(self, item: typedefs.PubTypes):
+        logs.logger.debug('%r: publishing %r', self, item)
+        self.inbox.put_nowait(item)
+
+    async def pub(self, item: typedefs.PubTypes):
         logs.logger.debug('%r: publishing %r', self, item)
         await self.inbox.put(item)
 
@@ -120,8 +134,8 @@ class Subs(collections.abc.AsyncIterator):
     def __aiter__(self) -> 'Subs':
         return self
 
-    async def __anext__(self) -> Any:
-        logs.logger.debug('%r: waiting for next item in any inbox...', self)
+    async def __anext__(self) -> typedefs.PubTypes:
+        logs.logger.debug('%r: waiting for next item in typedefs.PubTypes inbox...', self)
         if not self._buffer:
             done, _ = await asyncio.wait([
                 asyncio.ensure_future(sub.__anext__())
@@ -133,7 +147,11 @@ class Subs(collections.abc.AsyncIterator):
         logs.logger.debug('%r: got item from inbox %r', self, msg)
         return msg
 
-    async def pub(self, item: Any):
+    def pub_nowait(self, item: typedefs.PubTypes):
+        for s in self._subs:
+            s.pub_nowait(item)
+
+    async def pub(self, item: typedefs.PubTypes):
         await asyncio.gather(*[
             s.pub(item)
             for s in self._subs

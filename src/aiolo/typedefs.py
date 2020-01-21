@@ -59,6 +59,20 @@ MessageTypes = Union[
 ]
 
 
+PubTypes = Union[
+    str,
+    bytes,
+    bytearray,
+    int,
+    bool,
+    float,
+    None,
+    'timetags.TimeTag',
+    'midis.Midi',
+    Exception,
+]
+
+
 TimeTagTypes = Union[
     'timetags.TimeTag',
     datetime.datetime,

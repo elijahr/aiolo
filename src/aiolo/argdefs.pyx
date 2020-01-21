@@ -3,7 +3,6 @@
 import datetime
 from typing import Iterable
 
-cimport cython
 
 from libc.stdint cimport uint8_t, int32_t, \
     UINT8_MAX as _UINT8_MAX, \
@@ -152,7 +151,6 @@ cdef tuple EMPTY_STRINGS = (b'', '')
 cdef tuple BOOLS_OR_NONE = (True, False, None)
 
 
-@cython.no_gc
 cdef class Argdef(defs.Def):
     def __cinit__(self, argdef: typedefs.ArgdefTypes):
         if argdef is not None and argdef != ANY_ARGS:

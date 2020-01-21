@@ -8,3 +8,5 @@ Pipfile*
 .DS_Store
 .eggs/
 .cache/
+test.log
+cython_debug

@@ -219,6 +219,7 @@ cdef extern from "lo/lo.h" nogil:
 
     lo_server lo_server_new_multicast(char* group, char* port, lo_err_handler err_h)
 
+    # Added in 0.30, but current homebrew
     lo_server lo_server_new_multicast_iface(char* group, char* port, char* iface, char* ip, lo_err_handler err_h)
 
     lo_server lo_server_new_from_url(char* url, lo_err_handler err_h)
@@ -256,6 +257,8 @@ cdef extern from "lo/lo.h" nogil:
     int lo_server_enable_queue(lo_server s, int queue_enabled, int dispatch_remaining)
 
     int lo_server_events_pending(lo_server s)
+
+    void lo_server_set_error_context(lo_server s, void *user_data)
 
     double lo_server_next_event_delay(lo_server s)
 
@@ -305,7 +308,8 @@ cdef extern from "lo/lo.h" nogil:
 
     lo_server_thread lo_server_thread_new_multicast(char* group, char* port, lo_err_handler err_h)
 
-    lo_server_thread lo_server_thread_new_multicast_iface(char* group, char* port, char* iface, char* ip, lo_err_handler err_h)
+    IF LO_VERSION >= "0.30":
+        lo_server_thread lo_server_thread_new_multicast_iface(char* group, char* port, char* iface, char* ip, lo_err_handler err_h)
 
     lo_server_thread lo_server_thread_new_with_proto(char* port, int proto, lo_err_handler err_h)
 
@@ -365,7 +369,14 @@ cdef extern from "lo/lo.h" nogil:
 
     void* lo_blob_dataptr(lo_blob b)
 
+    void * lo_error_get_context()
+
     void lo_version(char* verstr, int verstr_size, int* major, int* minor, char* extra, int extra_size, int* lt_major, int* lt_minor, int* lt_bug)
+
+
+ctypedef struct lo_address_header:
+    char * host
+    int socket
 
 
 # This is only needed so the module gets an init

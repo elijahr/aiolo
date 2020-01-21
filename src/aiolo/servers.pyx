@@ -2,92 +2,34 @@
 
 import asyncio
 import socket
-import threading
-
-from cpython.ref cimport Py_INCREF, Py_DECREF
 
 
-from . import exceptions, logs, routes, typedefs
-from . cimport argdefs, lo, multicasts, paths
+from . import exceptions, logs
+from . cimport lo, multicasts
 
 
-_SERVER_ERROR = threading.local()
+from .abstractservers cimport on_error, pop_server_start_error, AbstractServer, NO_IFACE, NO_IP
 
 
-cdef char * NO_IFACE = <char*>0
-cdef char * NO_IP = <char*>0
-
-
-def pop_server_error():
-    try:
-        return getattr(_SERVER_ERROR, 'error')
-    except AttributeError:
-        return None
-    finally:
-        try:
-            delattr(_SERVER_ERROR, 'errors')
-        except AttributeError:
-            pass
-
-def set_server_error(msg: str):
-    setattr(_SERVER_ERROR, 'error', msg)
-
-
-cdef class Server:
-    def __cinit__(self, *, url: str = None, multicast: multicasts.MultiCast = None):
-        if url and multicast:
-            raise ValueError('Provide either url or multicast, not both (got %r, %r)' % (url, multicast))
-        self.url = url
-        self.multicast = multicast
-        self.routing = {}
-        self.lo_server = NULL
-
-    def __init__(self, *, url: str = None, multicast: multicasts.MultiCast = None):
-        pass
+cdef class Server(AbstractServer):
 
     def __dealloc__(self):
-        if self.lo_server is not NULL:
-            lo.lo_server_free(self.lo_server)
-            self.lo_server = NULL
+        if self._lo_server is not NULL:
+            lo.lo_server_free(self._lo_server)
+            self._lo_server = NULL
 
-    def __repr__(self):
-        if self.url:
-            return 'Server(url=%r)' % self.url
-        return 'Server(multicast=%r)' % self.multicast
+    cdef lo.lo_server lo_server(self):
+        return self._lo_server
 
-    @property
-    def running(self):
-        return self.lo_server is not NULL
-
-    @property
-    def port(self):
-        if self.lo_server is not NULL:
-            return lo.lo_server_get_port(self.lo_server)
-        burl = self.url.encode('utf8')
-        return lo.lo_url_get_port(burl)
-
-    @property
-    def protocol(self):
-        if self.lo_server is not NULL:
-            return lo.lo_server_get_protocol(self.lo_server)
-        burl = self.url.encode('utf8')
-        return lo.lo_url_get_protocol(burl)
-
-    def start(self):
+    cdef void lo_server_start(self):
         cdef:
             char * iface
             char * ip
             multicasts.MultiCast multicast
-        if self.running:
-            raise exceptions.StartError('Server already running, cannot start again')
-
-        # Clear any previous errors for this thread, to ensure correct exception output.
-        # The error should have been logged already anyways.
-        pop_server_error()
-
+            lo.lo_server lo_server = NULL
         if self.url:
             burl = self.url.encode('utf8')
-            self.lo_server = lo.lo_server_new_from_url(burl, on_error)
+            lo_server = lo.lo_server_new_from_url(burl, on_error)
         elif self.multicast:
             multicast = <multicasts.MultiCast>self.multicast
             if multicast._iface:
@@ -98,15 +40,18 @@ cdef class Server:
                 ip = multicast._ip
             else:
                 ip = NO_IP
-            self.lo_server = lo.lo_server_new_multicast_iface(multicast._group, multicast._port, iface, ip, on_error)
+            if iface == NO_IFACE and ip == NO_IP:
+                lo_server = lo.lo_server_new_multicast(multicast._group, multicast._port, on_error)
+            lo_server = lo.lo_server_new_multicast_iface(
+                multicast._group, multicast._port, iface, ip, on_error)
         else:
             # Shouldn't get here, but JIC
-            raise ValueError('Server cannot be started without a url or multicast')
+            raise exceptions.StartError('Server cannot be started without a url or multicast')
 
-        if self.lo_server is NULL:
-            # Hackery, since the error is propagated to a callback which has no reference to
+        if lo_server is NULL:
+            # Hackery, since the error is propagated to a callback which does not yet have a reference to
             # the server instance.
-            server_error = pop_server_error()
+            server_error = pop_server_start_error()
             if server_error is not None:
                 if self.url:
                     msg = '%s (url=%r)' % (server_error, self.url)
@@ -115,165 +60,39 @@ cdef class Server:
                 raise exceptions.StartError(msg)
             raise MemoryError
 
-        lo.lo_server_enable_queue(self.lo_server, 1, 0)
-
-        for route in self.routing.values():
-            self._add_route(route)
-
-        self.sock = socket.socket(fileno=lo.lo_server_get_socket_fd(self.lo_server))
+        self._lo_server = lo_server
+        self.sock = socket.socket(fileno=lo.lo_server_get_socket_fd(self._lo_server))
         loop = asyncio.get_event_loop()
-        loop.add_reader(self.sock, self._on_sock_readable, loop)
-        logs.logger.debug('%r: started, listening on %r', self, loop)
+        loop.add_reader(self.sock, self._on_sock_readable, self, loop)
+        logs.logger.debug('%r: started, polling on %r', self, loop)
 
-    def stop(self):
-        if not self.running:
-            raise exceptions.StopError('Server not started, cannot stop')
-        lo.lo_server_free(self.lo_server)
-        self.lo_server = NULL
-        for route in self.routing.values():
-            Py_DECREF(route)
-        try:
-            self.sock.detach()
-        except OSError:
-            pass
-        self.sock = None
-        logs.logger.debug('%r: stopped', self)
+    cdef void lo_server_stop(self):
+        if self.sock is not None:
+            try:
+                self.sock.detach()
+            except OSError:
+                pass
+            self.sock = None
+        if self._lo_server is not NULL:
+            lo.lo_server_free(self._lo_server)
+            self._lo_server = NULL
 
-    def route(self, route: routes.RouteTypes, argdef: typedefs.ArgdefTypes = None) -> routes.Route:
-        """
-        Create a route for this server
-        """
-        if isinstance(route, routes.Route):
-            if argdef:
-                raise ValueError("Cannot provide route and argtypes together")
-            path = <paths.Path>route.path
-            argdef = <argdefs.Argdef>route.argdef
-        else:
-            path = paths.Path(route)
-            argdef = argdefs.Argdef(argdef)
-            route = None
-        key = route_key(path, argdef)
-        try:
-            return self.routing[key]
-        except KeyError:
-            if route is None:
-                route = routes.Route(path, argdef)
-            if route.is_pattern:
-                raise ValueError('Cannot add pattern route %r as method definition' % route)
-            if self.running:
-                self._add_route(route)
-            self.routing[key] = route
-            return route
-
-    def unroute(self, route: routes.RouteTypes, argdef: typedefs.ArgdefTypes = None) -> routes.Route:
-        if isinstance(route, routes.Route):
-            if argdef:
-                raise ValueError("Cannot provide route and argdef together")
-            path = <paths.Path>route.path
-            argdef = <argdefs.Argdef>route.argdef
-        else:
-            path = paths.Path(route)
-            argdef = argdefs.Argdef(argdef)
-            route = None
-        key = route_key(path, argdef)
-        try:
-            route = self.routing[key]
-        except KeyError:
-            pass
-        else:
-            del self.routing[key]
-            if self.running:
-                self._del_route(route)
-        return route
-
-    def _on_sock_readable(self, loop):
-        logs.logger.debug('%r: incoming data on socket', self)
-        self._server_recv_noblock(loop)
-
-    cdef void _server_recv_noblock(Server self, object loop):
+    cdef void _on_sock_readable(Server self, object loop):
+        logs.logger.debug('%r: incoming or scheduled data', self)
         cdef:
             int count = -1
             double delay
 
         while count != 0:
-            count = lo.lo_server_recv_noblock(self.lo_server, 0)
+            count = lo.lo_server_recv_noblock(self._lo_server, 0)
             logs.logger.debug('%r: processed %r bytes', self, count)
             if count == 0:
                 break
 
         # Check for scheduled bundles
-        if lo.lo_server_events_pending(self.lo_server):
-            delay = lo.lo_server_next_event_delay(self.lo_server)
+        if lo.lo_server_events_pending(self._lo_server):
+            delay = lo.lo_server_next_event_delay(self._lo_server)
             logs.logger.debug('%r: pending server events, will check in %ss', self, delay)
             # I am verklempt that passing a cdef void function to call_later actually works,
             # but it does! I'll just go with it because it is faster.
-            loop.call_later(delay, self._server_recv_noblock, self, loop)
-
-    @property
-    def events_pending(self) -> bool:
-        return bool(lo.lo_server_events_pending(self.lo_server))
-
-    @property
-    def next_event_delay(self) -> float:
-        return lo.lo_server_next_event_delay(self.lo_server)
-
-    def _add_route(self, route: routes.Route):
-        cdef:
-            char * path = (<paths.Path>route.path).charp()
-            char * argdef = (<argdefs.Argdef>route.argdef).charp()
-        # Steal ref
-        Py_INCREF(route)
-        lo.lo_server_add_method(
-            self.lo_server,
-            path,
-            argdef,
-            <lo.lo_method_handler>router,
-            <void*>route)
-        logs.logger.debug('%r: added route %r' % (self, route))
-
-    def _del_route(self, route: routes.Route):
-        cdef:
-            char * path = (<paths.Path>route.path).charp()
-            char * argdef = (<argdefs.Argdef>route.argdef).charp()
-        lo.lo_server_del_method(
-            self.lo_server,
-            path,
-            argdef)
-        # Unsteal ref
-        Py_DECREF(route)
-        logs.logger.debug('%r: removed route %r' % (self, route))
-
-
-def route_key(path: paths.Path, argdef: argdefs.Argdef):
-    return '%r:%r' % (path, argdef)
-
-
-cdef void on_error(int num, const char *m, const char *path) nogil:
-    with gil:
-        msg = (<bytes>m).decode('utf8')
-        msg = "liblo server error %s: %s" % (num, msg)
-        logs.logger.error(msg)
-        set_server_error(msg)
-
-
-cdef int router(
-    const char *path,
-    const char *argtypes,
-    lo.lo_arg ** argv,
-    int argc,
-    lo.lo_message raw_msg,
-    void *_route
-) nogil except 1:
-    cdef int retval = 0
-    cdef lo.lo_timetag lo_timetag
-    with gil:
-        route = <object>_route
-        try:
-            data = argdefs.Argdef(argtypes).unpack_args(argv, argc)
-            logs.logger.debug('%r: received message %r', route, data)
-            asyncio.get_event_loop().create_task(route.pub(data))
-        except BaseException as exc:
-            logs.logger.exception(exc)
-            retval = 1
-            raise
-    return retval
+            loop.call_later(delay, self._on_sock_readable, self, loop)

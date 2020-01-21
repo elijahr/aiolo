@@ -1,4 +1,5 @@
 # cython: language_level=3
+import asyncio
 from typing import Union
 
 from . import exceptions, ips, logs, typedefs
@@ -179,18 +180,26 @@ cdef class Address:
                 '%s (%s)' % ((<bytes>lo.lo_address_errstr(self.lo_address)).decode('utf8'),
                              str(lo.lo_address_errno(self.lo_address))))
 
-    def pub(self, route: Union[typedefs.RouteTypes], *data: typedefs.MessageTypes) -> int:
+    def send(self, route: Union[typedefs.RouteTypes], *data: typedefs.MessageTypes) -> int:
         message = messages.Message(route, *data)
         return self.message(message)
 
     def message(self, message: messages.Message) -> int:
         if message.route.path.matches_any:
             raise ValueError('Message must be sent to a specific path or pattern')
+        return self._message(message)
 
+    def bundle(self, bundle: typedefs.BundleTypes, timetag: typedefs.TimeTagTypes = None) -> int:
+        if not isinstance(bundle, bundles.Bundle):
+            bundle = bundles.Bundle(bundle, timetag)
+        elif timetag is not None:
+            raise ValueError('Cannot provide Bundle instance and timetag together')
+        return self._bundle(bundle)
+
+    cdef int _message(self, messages.Message message):
         cdef:
             char * path = (<paths.Path>message.route.path).charp()
-            lo.lo_message lo_message = (<messages.Message>message).lo_message
-
+            lo.lo_message lo_message = message.lo_message
         logs.logger.debug('%r: sending %r', self, message)
         count = lo.lo_send_message(self.lo_address, path, lo_message)
 
@@ -200,11 +209,7 @@ cdef class Address:
         logs.logger.debug('%r: sent %s bytes', self, count)
         return count
 
-    def bundle(self, bundle: typedefs.BundleTypes, timetag: typedefs.TimeTagTypes = None) -> int:
-        if not isinstance(bundle, bundles.Bundle):
-            bundle = bundles.Bundle(bundle, timetag)
-        elif timetag is not None:
-            raise ValueError('Cannot provide Bundle instance and timetag together')
+    cdef int _bundle(self, bundles.Bundle bundle):
         logs.logger.debug('%r: sending %r', self, bundle)
         count = lo.lo_send_bundle(self.lo_address, (<bundles.Bundle>bundle).lo_bundle)
         self.check_send_error()
@@ -212,3 +217,4 @@ cdef class Address:
             raise exceptions.SendError(count)
         logs.logger.debug('%r: sent %s bytes', self, count)
         return count
+

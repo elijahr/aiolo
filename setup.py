@@ -1,8 +1,37 @@
 
 import glob
 import os
+import subprocess
+
 
 from setuptools import setup, Extension
+from setuptools.command.build_ext import build_ext as _build_ext
+
+
+class build_ext(_build_ext):
+    # user_options = _build_ext.user_options + [
+    #     ('debug', None, 'Output debug symbols.'),
+    # ]
+    def finalize_options(self):
+        from Cython.Build.Dependencies import cythonize
+        gdb_debug = bool(self.debug)
+        self.distribution.ext_modules[:] = cythonize(
+            self.distribution.ext_modules,
+            gdb_debug=gdb_debug,
+            compile_time_env=get_cython_compile_time_env(),
+        )
+        super(build_ext, self).finalize_options()
+
+
+def get_cython_compile_time_env():
+    try:
+        lo_version = subprocess.run(
+            ['pkg-config', '--modversion', 'liblo'],
+            capture_output=True
+        ).stdout.strip().decode('utf8') or '0.29'
+    except FileNotFoundError:
+        lo_version = '0.29'
+    return dict(LO_VERSION=lo_version)
 
 
 with open("README.md", "r") as fh:
@@ -38,6 +67,9 @@ setup(
             '*.pxd',
         ],
     },
+    cmdclass={
+        'build_ext': build_ext,
+    },
     ext_modules=[
         Extension(
             module,
@@ -46,6 +78,7 @@ setup(
         )
         for module, source in get_pyx()
     ],
+    # install_requires=['cython'],
     setup_requires=['cython'],
     extras_require={
         'examples': [

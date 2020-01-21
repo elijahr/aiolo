@@ -33,7 +33,8 @@ def event_loop():
 
 
 @pytest.fixture
-def server(event_loop):
+@pytest.mark.asyncio
+async def server(event_loop):
     server = aiolo.Server(url='osc.tcp://:10000')
     server.start()
     yield server
@@ -42,12 +43,23 @@ def server(event_loop):
 
 @pytest.fixture
 async def address(server):
-    await asyncio.sleep(0.001)
     return aiolo.Address(url=server.url)
 
 
 @pytest.fixture
-def multicast_server(event_loop):
+@pytest.mark.asyncio
+async def server_thread(event_loop):
+    server_thread = aiolo.ServerThread(url='osc.tcp://:10001')
+    server_thread.start()
+    # Give the thread some time to boot
+    await asyncio.sleep(1)
+    yield server_thread
+    server_thread.stop()
+
+
+@pytest.fixture
+@pytest.mark.asyncio
+async def multicast_server(event_loop):
     multicast = aiolo.MultiCast('224.0.1.1', port=15432)
     server = aiolo.Server(multicast=multicast)
     server.start()
@@ -105,20 +117,18 @@ def ipv6_servers():
 
 
 @pytest.mark.asyncio
-async def test_multiple_addresses(event_loop, server):
-    foo = server.route('/foo', str)
-    address1 = aiolo.Address(url=server.url)
-    address2 = aiolo.Address(url=server.url)
-    address3 = aiolo.Address(url=server.url)
+async def test_multiple_addresses(event_loop, server_thread):
+    foo = server_thread.route('/foo', str)
+    address1 = aiolo.Address(url=server_thread.url)
+    address2 = aiolo.Address(url=server_thread.url)
+    address3 = aiolo.Address(url=server_thread.url)
     task = create_task(subscribe(foo.sub(), 3))
-    event_loop.call_later(2, task.cancel)
-    address1.pub(foo, 'address1')
-    # I am verklempt why this sleep is necessary, but it is, or the messages never get processed
-    await asyncio.sleep(0.0000000000001)
-    address2.pub(foo, 'address2')
-    await asyncio.sleep(0.0000000000001)
-    address3.pub(foo, 'address3')
-    await asyncio.sleep(0.0000000000001)
+    event_loop.call_later(CANCEL_TIMEOUT, task.cancel)
+    address1.send(foo, 'address1')
+    await asyncio.sleep(0.1)
+    address2.send(foo, 'address2')
+    await asyncio.sleep(0.1)
+    address3.send(foo, 'address3')
     results = await task
     assert results == [['address1'], ['address2'], ['address3']]
 
@@ -152,9 +162,9 @@ async def test_multicast(event_loop, multicast_server, multicast_address):
     foo = multicast_server.route('/foo', str)
     task = create_task(subscribe(foo.sub(), 3))
     event_loop.call_later(CANCEL_TIMEOUT, task.cancel)
-    multicast_address.pub(foo, 'foo')
-    multicast_address.pub(foo, 'bar')
-    multicast_address.pub(foo, 'baz')
+    multicast_address.send(foo, 'foo')
+    multicast_address.send(foo, 'bar')
+    multicast_address.send(foo, 'baz')
     results = await task
     assert results == [['foo'], ['bar'], ['baz']]
 
@@ -193,9 +203,9 @@ async def test_multiple_servers(event_loop):
         address3 = aiolo.Address(url=server3.url)
         task = create_task(subscribe(foo.sub(), 3))
         event_loop.call_later(CANCEL_TIMEOUT, task.cancel)
-        address1.pub(foo, 'address1')
-        address2.pub(foo, 'address2')
-        address3.pub(foo, 'address3')
+        address1.send(foo, 'address1')
+        address2.send(foo, 'address2')
+        address3.send(foo, 'address3')
         results = await task
         assert results == [['address1'], ['address2'], ['address3']]
     finally:
@@ -218,7 +228,7 @@ def valid_types_params():
 async def test_valid_types(event_loop, server, address, path, argdef, publish, expected):
     route = server.route(path, argdef)
     task = create_task(subscribe(route.sub(), 1))
-    address.pub(route, publish)
+    address.send(route, publish)
     event_loop.call_later(CANCEL_TIMEOUT, task.cancel)
     try:
         result = await task
@@ -242,7 +252,7 @@ def invalid_types_params():
 async def test_invalid_types(server, address, path, argdef, invalid):
     route = server.route(path, [argdef])
     with pytest.raises(ValueError):
-        address.pub(route, invalid)
+        address.send(route, invalid)
 
 
 @pytest.mark.parametrize('argdef,value', [
@@ -264,7 +274,7 @@ async def test_multiple_subs(event_loop, server, address):
         create_task(subscribe(foo.sub(), 1)),
     )
     event_loop.call_later(CANCEL_TIMEOUT, tasks.cancel)
-    address.pub(foo, 'bar')
+    address.send(foo, 'bar')
     results = list(await tasks)
     assert results == [[['bar']], [['bar']]]
 
@@ -275,7 +285,7 @@ async def test_unroute(event_loop, server, address):
     task = create_task(subscribe(foo.sub(), 1))
     event_loop.call_later(CANCEL_TIMEOUT, task.cancel)
     server.unroute(foo)
-    address.pub(foo, 'bar')
+    address.send(foo, 'bar')
     with pytest.raises(asyncio.CancelledError):
         await task
 
@@ -351,7 +361,7 @@ async def test_route_pattern(event_loop, server, address):
     )
     event_loop.call_later(CANCEL_TIMEOUT, tasks.cancel)
     wildcard = aiolo.Route('/[a-z]*', 's')
-    address.pub(wildcard, ['baz'])
+    address.send(wildcard, ['baz'])
     results = list(await tasks)
     assert results == [[['baz']], [['baz']]]
 
@@ -374,7 +384,7 @@ async def test_route_join(event_loop, server, address):
     route &= baz
     route &= spaz
     assert route.is_pattern
-    address.pub(route, 'hello')
+    address.send(route, 'hello')
     results = list(await tasks)
     assert results == [[['hello']], [['hello']], [['hello']], [['hello']]]
 
@@ -392,8 +402,8 @@ async def test_any_path(event_loop, server, address):
     task = create_task(subscribe(any_path.sub(), 1))
     event_loop.call_later(CANCEL_TIMEOUT, task.cancel)
     with pytest.raises(ValueError):
-        address.pub(any_path, ['foo'])
-    address.pub(aiolo.Route('/foo', 's'), ['foo'])
+        address.send(any_path, ['foo'])
+    address.send(aiolo.Route('/foo', 's'), ['foo'])
     results = list(await task)
     assert results == [['foo']]
 
@@ -403,7 +413,7 @@ async def test_no_args(event_loop, server, address):
     foo = server.route('/foo', aiolo.NO_ARGS)
     task = create_task(subscribe(foo.sub(), 1))
     event_loop.call_later(CANCEL_TIMEOUT, task.cancel)
-    address.pub(foo)
+    address.send(foo)
     results = list(await task)
     assert results == [[]]
 
@@ -413,7 +423,7 @@ async def test_any_args(event_loop, server, address):
     foo = server.route('/foo', aiolo.ANY_ARGS)
     task = create_task(subscribe(foo.sub(), 1))
     event_loop.call_later(CANCEL_TIMEOUT, task.cancel)
-    address.pub(foo, 'foo')
+    address.send(foo, 'foo')
     results = list(await task)
     assert results == [['foo']]
 
@@ -424,9 +434,9 @@ async def test_sub_join(event_loop, server, address):
     bar = server.route('/bar', 's')
     sub = foo.sub() | bar.sub()
     task = create_task(subscribe(sub, 2))
-    event_loop.call_later(0.1, task.cancel)
-    address.pub(foo, 'foo')
-    address.pub(bar, 'bar')
+    event_loop.call_later(CANCEL_TIMEOUT, task.cancel)
+    address.send(foo, 'foo')
+    address.send(bar, 'bar')
     results = list(await task)
     assert sorted(results) == [['bar'], ['foo']]
 

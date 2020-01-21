@@ -19,6 +19,7 @@ import aiolo
 
 def pytest_addoption(parser):
     parser.addoption("--ipv6", action="store_true", help="Run tests for IPv6 support")
+    parser.addoption("--dump-logs", action="store", help="Run tests for IPv6 support")
 
 
 def pytest_configure(config):
@@ -28,10 +29,16 @@ def pytest_configure(config):
     config.addinivalue_line(
         "markers", "no_ipv6: mark test to not run if --ipv6 is passed"
     )
-    if config.getoption("verbose") > 0:
-        ch = logging.StreamHandler()
-        ch.setLevel(logging.DEBUG)
-        aiolo.logger.addHandler(ch)
+    if config.getoption('verbose') > 0:
+        h = logging.StreamHandler()
+        h.setLevel(logging.DEBUG)
+        aiolo.logger.addHandler(h)
+        aiolo.logger.setLevel(logging.DEBUG)
+    if config.getoption('dump_logs'):
+        # create file handler which logs even debug messages
+        h = logging.FileHandler(config.getoption('dump_logs'))
+        h.setLevel(logging.DEBUG)
+        aiolo.logger.addHandler(h)
         aiolo.logger.setLevel(logging.DEBUG)
 
 

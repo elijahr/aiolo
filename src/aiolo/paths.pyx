@@ -1,8 +1,5 @@
 # cython: language_level=3
 
-
-cimport cython
-
 from . import typedefs
 from . cimport defs
 
@@ -12,7 +9,6 @@ PATH_PATTERN_CHARS = b'{}[]!?*,-^\\'
 ANY_PATH = Path(None)
 
 
-@cython.no_gc
 cdef class Path(defs.Def):
     def __cinit__(self, path: typedefs.PathTypes):
         if isinstance(path, Path):

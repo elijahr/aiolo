@@ -3,7 +3,7 @@
 from typing import Iterable
 
 from .timetags import TT_IMMEDIATE
-from . import logs, typedefs
+from . import typedefs
 from . cimport lo, messages, paths, timetags
 
 
