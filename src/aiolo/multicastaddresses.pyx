@@ -5,7 +5,7 @@ from . cimport abstractservers, addresses, bundles, lo, messages, paths
 
 
 cdef class MultiCastAddress(addresses.Address):
-    def __init__(self, server: abstractservers.AbstractServer, no_delay: bool = False, stream_slip: bool = False, ttl: int = -1):
+    def __init__(self, server: abstractservers.AbstractServer, no_delay: bool = False, stream_slip: bool = False, ttl: int = 1):
         self.server = server
         super(MultiCastAddress, self).__init__(
             protocol=self.server.protocol,

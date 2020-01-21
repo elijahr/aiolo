@@ -59,8 +59,9 @@ class Route:
         return sub
 
     async def unsub(self, sub):
-        self.subs.remove(sub)
-        await sub.pub(exceptions.Unsubscribed())
+        if sub in self.subs:
+            self.subs.remove(sub)
+            await sub.pub(exceptions.Unsubscribed())
 
 
 class Sub(collections.abc.AsyncIterator):

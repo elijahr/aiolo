@@ -15,6 +15,8 @@ ArgdefTypes = Union[
     float,  # float('inf') -> LO_INFINITUM
     Type[int],  # int -> LO_INT64
     Type[float],  # float -> LO_DOUBLE
+    Type[bytes], Type[bytearray],  # LO_BLOB
+    Type[str],  # LO_STRING
     Type['timetags.TimeTag'],  # LO_TIMETAG
     Type['midis.Midi'],  # LO_MIDI
     List['ArgdefTypes'],  # any of the above, nested in a list. This allows us to do things like:
