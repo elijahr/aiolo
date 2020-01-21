@@ -9,9 +9,6 @@ from setuptools.command.build_ext import build_ext as _build_ext
 
 
 class build_ext(_build_ext):
-    # user_options = _build_ext.user_options + [
-    #     ('debug', None, 'Output debug symbols.'),
-    # ]
     def finalize_options(self):
         from Cython.Build.Dependencies import cythonize
         gdb_debug = bool(self.debug)
@@ -77,7 +74,6 @@ setup(
         )
         for module, source in get_pyx()
     ],
-    # install_requires=['cython'],
     setup_requires=['cython'],
     extras_require={
         'examples': [
