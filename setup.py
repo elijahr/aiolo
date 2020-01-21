@@ -46,7 +46,7 @@ def get_pyx():
 
 setup(
     name='aiolo',
-    version='3.0.0',
+    version='3.0.1',
     description='asyncio-friendly Python bindings for liblo',
     long_description=long_description,
     long_description_content_type="text/markdown",
