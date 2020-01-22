@@ -7,20 +7,6 @@ import sys
 from aiolo import logger, Address, Bundle, Message, Server, ANY_ARGS, NO_ARGS, Midi
 
 
-async def sub(foo):
-    """
-    Listen for incoming strings at /foo on any server in the cluster
-    """
-    messages = []
-    subscription = foo.sub()
-    async for (msg,) in subscription:
-        print(f'/foo got message: {msg}')
-        messages.append(msg)
-        if len(messages) == 10:
-            break
-    return messages
-
-
 def pub():
     address = Address(url='osc.tcp://:10001')
 
