@@ -5,6 +5,9 @@ if TYPE_CHECKING:
     from . import argdefs, bundles, midis, paths, routes, timetags
 
 
+__all__ = ['ArgdefTypes', 'BundleTypes', 'PathTypes', 'RouteTypes', 'MessageTypes', 'PubTypes', 'TimeTagTypes']
+
+
 ArgdefTypes = Union[
     'argdefs.Argdef',
     str, bytes, bytearray,  # strings where each char represents a LO_* type. This is what liblo interfaces expect.
@@ -77,8 +80,11 @@ PubTypes = Union[
 
 TimeTagTypes = Union[
     'timetags.TimeTag',
-    datetime.datetime,
-    float,
-    int,
+    datetime.datetime,  # An exact time
+    float,  # An OSC timestamp; seconds since midnight JAN 1 1900 UTC
+    int,  # An OSC timestamp; seconds since midnight JAN 1 1900 UTC
+    Tuple[int, int],  # sec, frac, where sec is no. seconds since midnight JAN 1 1900 UTC and
+                      # frac is the number of (approximately) 200 picoseconds beyond that.
+                      # See http://opensoundcontrol.org/node/3/#timetags
     None
 ]

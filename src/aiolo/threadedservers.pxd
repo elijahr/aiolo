@@ -4,7 +4,7 @@
 from . cimport abstractservers, lo
 
 
-cdef class ServerThread(abstractservers.AbstractServer):
+cdef class ThreadedServer(abstractservers.AbstractServer):
     # private
     cdef lo.lo_server_thread _lo_server_thread
 

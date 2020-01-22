@@ -3,6 +3,9 @@
 from typing import Union
 
 
+__all__ = ['Def']
+
+
 cdef class Def:
     def __repr__(self):
         return '%s(%r)' % (self.__class__.__name__, self._bytes)

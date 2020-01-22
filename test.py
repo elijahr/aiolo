@@ -1,10 +1,11 @@
 import asyncio
 import datetime
+import multiprocessing
+import random
 import sys
 from typing import Union
 
 import netifaces
-import pytz
 
 import aiolo
 import pytest
@@ -48,28 +49,32 @@ async def address(server):
 
 @pytest.fixture
 @pytest.mark.asyncio
-async def server_thread(event_loop):
-    server_thread = aiolo.ServerThread(url='osc.tcp://:10001')
-    server_thread.start()
+async def threaded_server(event_loop):
+    threaded_server = aiolo.ThreadedServer(url='osc.tcp://:10001')
+    threaded_server.start()
     # Give the thread some time to boot
     await asyncio.sleep(1)
-    yield server_thread
-    server_thread.stop()
+    yield threaded_server
+    threaded_server.stop()
 
 
 @pytest.fixture
 @pytest.mark.asyncio
-async def multicast_server(event_loop):
-    multicast = aiolo.MultiCast('224.0.1.1', port=15432)
-    server = aiolo.Server(multicast=multicast)
-    server.start()
-    yield server
-    server.stop()
+async def multicast_cluster(event_loop):
+    multicast = aiolo.MultiCast('224.0.1.1', port=10001)
+    cluster = []
+    for i in range(3):
+        server = aiolo.Server(multicast=multicast)
+        server.start()
+        cluster.append(server)
+    yield cluster
+    for server in cluster:
+        server.stop()
 
 
 @pytest.fixture
-async def multicast_address(multicast_server):
-    return aiolo.MultiCastAddress(server=multicast_server)
+async def multicast_address(multicast_cluster):
+    return aiolo.MultiCastAddress(server=random.choice(multicast_cluster))
 
 
 @pytest.fixture
@@ -117,11 +122,11 @@ def ipv6_servers():
 
 
 @pytest.mark.asyncio
-async def test_multiple_addresses(event_loop, server_thread):
-    foo = server_thread.route('/foo', str)
-    address1 = aiolo.Address(url=server_thread.url)
-    address2 = aiolo.Address(url=server_thread.url)
-    address3 = aiolo.Address(url=server_thread.url)
+async def test_multiple_addresses_and_threaded_server(event_loop, threaded_server):
+    foo = threaded_server.route('/foo', str)
+    address1 = aiolo.Address(url=threaded_server.url)
+    address2 = aiolo.Address(url=threaded_server.url)
+    address3 = aiolo.Address(url=threaded_server.url)
     task = create_task(subscribe(foo.sub(), 3))
     event_loop.call_later(CANCEL_TIMEOUT, task.cancel)
     address1.send(foo, 'address1')
@@ -158,15 +163,17 @@ def test_address_interface_ipv4(server, interfaces_by_ipv4):
 
 @pytest.mark.no_ipv6
 @pytest.mark.asyncio
-async def test_multicast(event_loop, multicast_server, multicast_address):
-    foo = multicast_server.route('/foo', str)
-    task = create_task(subscribe(foo.sub(), 3))
+async def test_multicast(event_loop, multicast_cluster, multicast_address):
+    foo = aiolo.Route('/foo', str)
+    for s in multicast_cluster:
+        s.route(foo)
+    task = create_task(subscribe(foo.sub(), 3 * len(multicast_cluster)))
     event_loop.call_later(CANCEL_TIMEOUT, task.cancel)
     multicast_address.send(foo, 'foo')
     multicast_address.send(foo, 'bar')
     multicast_address.send(foo, 'baz')
     results = await task
-    assert results == [['foo'], ['bar'], ['baz']]
+    assert results == [['foo'], ['bar'], ['baz']] * len(multicast_cluster)
 
 
 @pytest.mark.ipv6
@@ -432,40 +439,114 @@ async def test_any_args(event_loop, server, address):
 async def test_sub_join(event_loop, server, address):
     foo = server.route('/foo', 's')
     bar = server.route('/bar', 's')
-    sub = foo.sub() | bar.sub()
-    task = create_task(subscribe(sub, 2))
+    baz = server.route('/baz', 's')
+    sub = foo.sub() | bar.sub() | baz.sub()
+    task = create_task(subscribe(sub, 6))
     event_loop.call_later(CANCEL_TIMEOUT, task.cancel)
-    address.send(foo, 'foo')
-    address.send(bar, 'bar')
-    results = list(await task)
-    assert sorted(results) == [['bar'], ['foo']]
+    address.send(foo, 'foo1')
+    address.send(foo, 'foo2')
+    address.send(bar, 'bar1')
+    address.send(bar, 'bar2')
+    address.send(baz, 'baz1')
+    address.send(baz, 'baz2')
+    results = await task
+    assert results == {
+        foo: [['foo1'], ['foo2']],
+        bar: [['bar1'], ['bar2']],
+        baz: [['baz1'], ['baz2']],
+    }
 
 
 def test_timetag():
-    assert aiolo.TimeTag(0) == aiolo.EPOCH_UTC
-    assert int(aiolo.TimeTag(10)) == 10
-    assert aiolo.TimeTag() == aiolo.TT_IMMEDIATE == aiolo.EPOCH_OSC
-    assert int(aiolo.TimeTag().timestamp) == aiolo.EPOCH_OSC.timestamp()
+    # assert that constants are sane
+    assert aiolo.TT_IMMEDIATE == (0, 1)
+    assert aiolo.TimeTag(aiolo.EPOCH_UTC) == (aiolo.JAN_1970, 0)
 
-    now_chicago = datetime.datetime.now(pytz.timezone('America/Chicago'))
-    assert aiolo.TimeTag(now_chicago) == now_chicago
-    assert aiolo.TimeTag(now_chicago).timestamp == now_chicago.timestamp()
-    assert aiolo.TimeTag(now_chicago).dt == now_chicago
+    # Test TT_IMMEDIATE is frozen
+    tt = aiolo.TT_IMMEDIATE
+    assert tt is aiolo.TT_IMMEDIATE
+    tt += 1
+    # FrozenTimeTag does not implement __iadd__ so a new instance is created for the name tt
+    assert tt is not aiolo.TT_IMMEDIATE
+    assert tt == (1, 1)
+    assert aiolo.TT_IMMEDIATE == (0, 1)
 
+    # Test operations
+    tt = aiolo.TimeTag((0, 1))
+    orig = tt
+    tt = tt + 3
+    assert tt == (3, 1)
+    assert tt is not orig
+    tt = tt - 2.1
+    assert tt == (0, .9 * aiolo.FRAC_PER_SEC)
+    assert tt is not orig
 
-def test_timetag_parts_to_timestamp():
-    assert aiolo.timetag_parts_to_timestamp(0, 0) == aiolo.EPOCH_OSC.timestamp()
-    assert aiolo.timetag_parts_to_timestamp(0x83aa7e80, 0) == aiolo.EPOCH_UTC.timestamp()
-    assert aiolo.timetag_parts_to_timestamp(0, 4294967295) == aiolo.EPOCH_OSC.timestamp() + 1
-    now = datetime.datetime.now(datetime.timezone.utc)
-    assert aiolo.timetag_parts_to_timestamp(*aiolo.TimeTag(now).timetag_parts) == now.timestamp()
+    # Test inplace operations
+    tt = aiolo.TimeTag((0, 1))
+    orig = tt
+    tt += 3
+    assert tt == (3, 1)
+    assert tt is orig
+    tt -= 2.1
+    assert tt == (0, .9 * aiolo.FRAC_PER_SEC)
+    assert tt is orig
+
+    for dt in (
+        aiolo.EPOCH_UTC,
+        datetime.datetime(1905, 5, 5, 5, 5, 5, 5, datetime.timezone.utc),
+        datetime.datetime(2026, 6, 6, 6, 6, 6, 6, datetime.timezone.utc),
+    ):
+        tt = aiolo.TimeTag(dt)
+        assert tt == dt and tt <= dt <= tt
+        assert tt.dt == dt and tt <= dt <= tt
+        assert tt.osc_timestamp == aiolo.unix_timestamp_to_osc_timestamp(dt.timestamp())
+        assert int(dt.timestamp()) == int(tt.unix_timestamp)
+        assert pytest.approx(float(dt.timestamp()), rel=1e-6) == tt.unix_timestamp
+        assert tuple(tt) == (tt.sec, tt.frac)
+
+        for other in (
+            aiolo.TimeTag(tt),
+            dt,
+            int(tt),
+            float(tt),
+            tuple(tt)
+        ):
+            # test comparison operators
+            if isinstance(other, int):
+                assert int(tt) == other
+                assert tt >= other
+                assert other <= tt
+            else:
+                assert tt == other
+                assert tt <= other
+                assert tt >= other
+                assert not tt < other
+                assert not other > tt
+                assert not other != tt
+
+        # frac precision is lost when comparing to datetime or int
+        assert (tt + 0.000000001).unix_timestamp == tt.unix_timestamp
+        assert (tt + 0.000000001).dt == tt.dt
+
+        # frac precision is not lost when comparing to tuple or timetag
+        assert tt + 0.1 != tt
+        assert tt + 0.1 != tuple(tt)
 
 
 async def subscribe(sub: Union[aiolo.Sub, aiolo.Subs], count: int):
-    items = []
-    async for item in sub:
-        items.append(item)
-        if len(items) == count:
-            await sub.unsub()
-            break
-    return items
+    if isinstance(sub, aiolo.Subs):
+        results = {}
+        async for route, item in sub:
+            results.setdefault(route, []).append(item)
+            if len([v for values in results.values() for v in values]) == count:
+                await sub.unsub()
+                break
+        return results
+    else:
+        items = []
+        async for item in sub:
+            items.append(item)
+            if len(items) == count:
+                await sub.unsub()
+                break
+        return items

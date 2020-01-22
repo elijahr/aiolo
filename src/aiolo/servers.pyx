@@ -11,6 +11,9 @@ from . cimport lo, multicasts
 from .abstractservers cimport on_error, pop_server_start_error, AbstractServer, NO_IFACE, NO_IP
 
 
+__all__ = ['Server']
+
+
 cdef class Server(AbstractServer):
 
     def __dealloc__(self):

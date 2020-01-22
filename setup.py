@@ -46,10 +46,11 @@ def get_pyx():
 
 setup(
     name='aiolo',
-    version='3.0.1',
+    version='3.1.0',
     description='asyncio-friendly Python bindings for liblo',
     long_description=long_description,
     long_description_content_type="text/markdown",
+    url='https://github.com/elijahr/aiolo',
     author='Elijah Shaw-Rutschman',
     author_email='elijahr+aiolo@gmail.com',
     packages=['aiolo'],
@@ -83,14 +84,12 @@ setup(
             'netifaces',
             'pytest',
             'pytest-asyncio',
-            'pytz',
         ],
         'dev': [
             'netifaces',
             'pytest',
             'pytest-asyncio',
             'pytest-watch',
-            'pytz',
         ]
     },
     classifiers=[

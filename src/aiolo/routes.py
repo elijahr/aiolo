@@ -1,8 +1,11 @@
 import asyncio
 import collections.abc
-from typing import Union
+from typing import Union, Tuple
 
 from . import argdefs, exceptions, logs, paths, typedefs
+
+
+__all__ = ['Route', 'Sub', 'Subs']
 
 
 class Route:
@@ -86,7 +89,7 @@ class Sub(collections.abc.AsyncIterator):
     def __aiter__(self) -> 'Sub':
         return self
 
-    async def __anext__(self) -> typedefs.PubTypes:
+    async def __anext__(self, as_tuple: bool = False) -> Union[typedefs.PubTypes, Tuple[Route, typedefs.PubTypes]]:
         try:
             logs.logger.debug('%r: waiting for next item in inbox...', self)
             msg = await self.inbox.get()
@@ -97,6 +100,8 @@ class Sub(collections.abc.AsyncIterator):
         except (exceptions.Unsubscribed, GeneratorExit):
             raise StopAsyncIteration
         else:
+            if as_tuple:
+                return self.route, msg
             return msg
 
     def pub_nowait(self, item: typedefs.PubTypes):
@@ -135,16 +140,19 @@ class Subs(collections.abc.AsyncIterator):
     def __aiter__(self) -> 'Subs':
         return self
 
-    async def __anext__(self) -> typedefs.PubTypes:
+    async def __anext__(self) -> Tuple[Route, typedefs.PubTypes]:
         logs.logger.debug('%r: waiting for next item in typedefs.PubTypes inbox...', self)
         if not self._buffer:
             done, _ = await asyncio.wait([
-                asyncio.ensure_future(sub.__anext__())
+                asyncio.ensure_future(sub.__anext__(as_tuple=True))
                 for sub in self._subs
             ], return_when=asyncio.FIRST_COMPLETED)
             for task in done:
                 self._buffer.append(task)
         msg = await self._buffer.pop(0)
+        # this sleep wakes up the loop, and OSC only offers 1/32 timetag granularity, so sleeping for less
+        # than that ensures we don't lose any granularity
+        await asyncio.sleep(1/33)
         logs.logger.debug('%r: got item from inbox %r', self, msg)
         return msg
 

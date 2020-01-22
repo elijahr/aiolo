@@ -13,7 +13,10 @@ from . cimport lo, multicasts
 from .abstractservers cimport on_error, pop_server_start_error, AbstractServer, NO_IFACE, NO_IP
 
 
-cdef class ServerThread(AbstractServer):
+__all__ = ['ThreadedServer']
+
+
+cdef class ThreadedServer(AbstractServer):
 
     def __dealloc__(self):
         if self._lo_server_thread is not NULL:
@@ -98,12 +101,12 @@ cdef class ServerThread(AbstractServer):
 
 cdef int server_thread_init(lo.lo_server_thread s, void* user_data) nogil:
     with gil:
-        server_thread = <ServerThread>user_data
+        server_thread = <ThreadedServer>user_data
         logs.logger.debug('%r: initialized thread', server_thread)
 
 
 cdef void server_thread_cleanup(lo.lo_server_thread s, void* user_data) nogil:
     with gil:
-        server_thread = <ServerThread>user_data
+        server_thread = <ThreadedServer>user_data
         logs.logger.debug('%r: cleaned up thread', server_thread)
         Py_DECREF(server_thread)

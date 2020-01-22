@@ -3,4 +3,4 @@
 from . cimport addresses, servers
 
 cdef class MultiCastAddress(addresses.Address):
-    cdef servers.Server server
+    cdef public servers.Server server

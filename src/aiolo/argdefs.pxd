@@ -47,3 +47,4 @@ cdef class Argdef(defs.Def):
     cdef lo.lo_message build_lo_message(Argdef self, object args: Iterable[typedefs.MessageTypes]) except NULL
     cdef list unpack_args(self, lo.lo_arg ** argv, int argc)
 
+cpdef bytes guess_argtypes(object args: Iterable[typedefs.MessageTypes])

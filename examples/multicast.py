@@ -46,7 +46,6 @@ async def main():
 
     # Wait for results
     messages = await task
-    print(messages)
     try:
         # The message will have been received once by each server in the cluster
         assert messages == ['foo'] * len(cluster)

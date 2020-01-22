@@ -15,6 +15,17 @@ from . import typedefs
 from . cimport defs, lo, midis, timetags
 
 
+__all__ = [
+    'Argdef',
+    'UINT8_MAX', 'INT32_MIN', 'INT32_MAX', 'INT64_MIN', 'INT64_MAX',
+    'INT32', 'FLOAT', 'STRING', 'BLOB', 'INT64', 'TIMETAG', 'DOUBLE',
+    'SYMBOL', 'CHAR', 'MIDI', 'TRUE', 'FALSE', 'NIL', 'INFINITUM',
+    'INFINITY',
+    'ANY_ARGS', 'NO_ARGS',
+    'guess_argtypes',
+]
+
+
 UINT8_MAX = _UINT8_MAX
 INT32_MIN = -_INT32_MIN # Why is this not negative in the first place?
 INT32_MAX = _INT32_MAX
@@ -348,7 +359,7 @@ cdef class Argdef(defs.Def):
             elif argtypes[i] == LO_INT64:
                 data.append(arg.i64)
             elif argtypes[i] == LO_TIMETAG:
-                timestamp = timetags.lo_timetag_to_timestamp(<lo.lo_timetag>arg.t)
+                timestamp = timetags.lo_timetag_to_unix_timestamp(<lo.lo_timetag>arg.t)
                 data.append(timetags.TimeTag(timestamp))
             elif argtypes[i] == LO_DOUBLE:
                 data.append(arg.d)
@@ -373,7 +384,7 @@ cdef class Argdef(defs.Def):
         return data
 
 
-def guess_argtypes(args: Iterable[typedefs.MessageTypes]) -> bytes:
+cpdef bytes guess_argtypes(object args: Iterable[typedefs.MessageTypes]):
     argtypes = bytearray()
     for arg in args:
         if arg in BOOLS_OR_NONE:

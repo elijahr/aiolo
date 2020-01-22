@@ -6,9 +6,12 @@ from . import routes, typedefs
 from . cimport argdefs, midis, timetags
 
 
+__all__ = ['Message']
+
+
 cdef class Message:
     def __cinit__(self, route: typedefs.RouteTypes, *data: typedefs.MessageTypes):
-        self.route = route if isinstance(route, routes.Route) else routes.Route(route)
+        self.route = route if isinstance(route, routes.Route) else routes.Route(route, argdefs.guess_argtypes(data))
         self.data = tuple(flatten_message_data(data))
         self.lo_message = (<argdefs.Argdef>self.route.argdef).build_lo_message(self.data)
 

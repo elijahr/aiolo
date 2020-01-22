@@ -133,9 +133,6 @@ class Machine:
 
         async for (stamp, ) in sub:
             # sub will yield anytime it receives a trigger
-            if stamp < self.loop.time():
-                # skip outdated items
-                print('Skipping timestamp %r, its in the past' % stamp)
             self.loop.call_at(stamp, play)
 
 
@@ -164,11 +161,10 @@ def publish():
     # send the sequence as a timestamped bundle.
     # note that timestamps are not wall clock timestamps (we'd use TimeTag for those),
     # they are asyncio monotonic clock timestamps
-    bundle = aiolo.Bundle([
+    address.bundle([
         aiolo.Message(route, start + (STEP * i))
         for i, route in enumerate(SEQUENCE)
     ])
-    address.bundle(bundle)
 
 
 def config_logging():

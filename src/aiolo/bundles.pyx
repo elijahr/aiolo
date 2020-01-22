@@ -7,10 +7,13 @@ from . import typedefs
 from . cimport lo, messages, paths, timetags
 
 
+__all__ = ['Bundle']
+
+
 cdef class Bundle:
     def __cinit__(
         self,
-        msgs: Iterable[typedefs.BundleTypes],
+        msgs: Iterable[typedefs.BundleTypes, None] = None,
         timetag: typedefs.TimeTagTypes = None
     ):
         if timetag is None:
@@ -23,12 +26,13 @@ cdef class Bundle:
         if self.lo_bundle is NULL:
             raise MemoryError
         self.msgs = []
-        for msg in msgs:
-            self.add(msg)
+        if msgs:
+            for msg in msgs:
+                self.add(msg)
 
     def __init__(
         self,
-        msgs: Iterable[typedefs.BundleTypes],
+        msgs: Iterable[typedefs.BundleTypes, None] = None,
         timetag: typedefs.TimeTagTypes = None
     ):
         pass

@@ -6,6 +6,9 @@ from typing import Union
 from . import ips
 
 
+__all__ = ['MultiCast']
+
+
 cdef class MultiCast:
     def __cinit__(
         self,

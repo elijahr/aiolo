@@ -4,6 +4,9 @@ from . import typedefs
 from . cimport defs
 
 
+__all__ = ['Path', 'ANY_PATH']
+
+
 PATH_PATTERN_CHARS = b'{}[]!?*,-^\\'
 
 ANY_PATH = Path(None)
