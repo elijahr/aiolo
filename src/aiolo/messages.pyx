@@ -1,49 +1,101 @@
 # cython: language_level=3
 
-from typing import Iterable
+from typing import Any
 
-from . import routes, typedefs
-from . cimport argdefs, midis, timetags
+from cpython cimport array
+import array
+
+from . import routes, types
+from . cimport addresses, typespecs, lo, timetags
 
 
 __all__ = ['Message']
 
 
-cdef class Message:
-    def __cinit__(self, route: typedefs.RouteTypes, *data: typedefs.MessageTypes):
-        self.route = route if isinstance(route, routes.Route) else routes.Route(route, argdefs.guess_argtypes(data))
-        self.data = tuple(flatten_message_data(data))
-        self.lo_message = (<argdefs.Argdef>self.route.argdef).build_lo_message(self.data)
+cdef array.array MESSAGE_ARRAY_TEMPLATE = array.array('B')
 
-    def __init__(self, route: typedefs.RouteTypes, *data):
+
+cdef class Message:
+    def __cinit__(self, route: types.RouteTypes, *args: types.MessageTypes):
+        cdef typespecs.TypeSpec typespec
+        if not isinstance(route, routes.Route):
+            typespec = typespecs.TypeSpec.guess(args)
+            route = routes.Route(route, typespec)
+        elif route.typespec.matches_any:
+            typespec = typespecs.TypeSpec.guess(args)
+        else:
+            typespec = <typespecs.TypeSpec>route.typespec
+
+        self.route = route
+        self.lo_message = typespec.pack_lo_message(args)
+
+    def __init__(Message self, route: types.RouteTypes, *data):
         pass
 
-    def __repr__(self):
-        return 'Message(%r, %r)' % (self.route, self.data)
+    def __repr__(Message self):
+        return 'Message(%r, %r)' % (self.route, self.unpack())
 
+    def __hash__(self):
+        return hash(b'Message:' + bytes(self.raw()))
 
-BASIC_TYPES = (
-    str,
-    bytes,
-    bytearray,
-    int,
-    bool,
-    float,
-    type(None),
-    timetags.TimeTag,
-    midis.Midi,
-)
+    def __eq__(Message self, other: Any) -> bool:
+        if not isinstance(other, Message):
+            return False
+        cdef message = <Message>other
+        return self.raw() == other.raw()
 
+    def __add__(Message self, other: types.BundleTypes):
+        from aiolo import Bundle
+        return Bundle(self).add(other)
 
-def flatten_message_data(data: Iterable) -> list:
-    items = []
-    try:
-        for item in data:
-            if isinstance(item, BASIC_TYPES):
-                items.append(item)
-            else:
-                items += flatten_message_data(item)
-    except TypeError:
-        # not iterable
-        items.append(data)
-    return items
+    @property
+    def source(self):
+        return addresses.lo_address_to_address(lo.lo_message_get_source(self.lo_message))
+
+    @property
+    def timetag(self):
+        return timetags.lo_timetag_to_timetag(lo.lo_message_get_timestamp(self.lo_message))
+
+    def unpack(Message self) -> list:
+        cdef:
+            int argc
+            lo.lo_arg** argv
+
+        argc = lo.lo_message_get_argc(self.lo_message)
+        argv = lo.lo_message_get_argv(self.lo_message)
+        return (<typespecs.TypeSpec>self.route.typespec).unpack_args(argv, argc)
+
+    def raw(Message self) -> array.array:
+        cdef:
+            size_t length
+            array.array arr
+            char * path = NULL
+
+        if not self.route.path.matches_any:
+            bpath = self.route.path.as_bytes
+            path = bpath
+
+        length = lo.lo_message_length(self.lo_message, path)
+        arr = array.clone(MESSAGE_ARRAY_TEMPLATE, length, zero=True)
+        lo.lo_message_serialise(self.lo_message, path, <void*>arr.data.as_voidptr, &length)
+        return arr
+    #
+    # @classmethod
+    # def from_raw(cls, route: routes.Route, data: array.array) -> Message:
+    #
+
+# cdef Message lo_message_to_message(object route, lo.lo_message lo_message):
+#     cdef:
+#         size_t length
+#         array.array arr
+#         char * path = NULL
+#
+#     if not route.path.matches_any:
+#         bpath = route.path.as_bytes
+#         path = bpath
+#
+#     length = lo.lo_message_length(lo_message, path)
+#     arr = array.clone(MESSAGE_ARRAY_TEMPLATE, length, zero=True)
+#     lo.lo_message_serialise(lo_message, path, <void*>arr.data.as_voidptr, &length)
+#     return Message.from_raw(route, arr)
+

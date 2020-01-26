@@ -3,7 +3,7 @@ import socket
 from typing import Union
 
 
-__all__ = ['is_valid_ip_address', 'is_valid_ipv4_address', 'is_valid_ipv6_address']
+__all__ = ['is_valid_ip_address_or_hostname', 'is_valid_ipv4_address', 'is_valid_ipv6_address']
 
 
 IPV4_REGEX = re.compile(r'^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$')
@@ -21,14 +21,16 @@ IPV6_REGEX = re.compile(r'^' + IPV6_PATTERN + '$')
 
 IPV6_NETLOC_REGEX = re.compile(r'^\[(' + IPV6_PATTERN + r')\](?:(:[\d]+))?$')
 
-
-def is_valid_ip_address(address: Union[str, bytes]) -> bool:
-    return is_valid_ipv4_address(address) or is_valid_ipv6_address(address)
+HOSTNAME_REGEX = re.compile(r'^(([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\-]*[a-zA-Z0-9])\.)*([A-Za-z0-9]|[A-Za-z0-9][A-Za-z0-9\-]*[A-Za-z0-9])$')
 
 
-def is_valid_ipv4_address(address: Union[str, bytes]) -> bool:
-    if isinstance(address, bytes):
-        address = address.decode('utf8')
+def is_valid_ip_address_or_hostname(address: str) -> bool:
+    return is_valid_ipv4_address(address) \
+           or is_valid_ipv6_address(address) \
+           or is_valid_hostname(address)
+
+
+def is_valid_ipv4_address(address: str) -> bool:
     try:
         socket.inet_pton(socket.AF_INET, address)
     except AttributeError:  # no inet_pton here, sorry
@@ -45,9 +47,7 @@ def is_valid_ipv4_address(address: Union[str, bytes]) -> bool:
     return True
 
 
-def is_valid_ipv6_address(address: Union[str, bytes]) -> bool:
-    if isinstance(address, bytes):
-        address = address.decode('utf8')
+def is_valid_ipv6_address(address: str) -> bool:
     try:
         socket.inet_pton(socket.AF_INET6, address)
     except AttributeError:  # no inet_pton here, sorry
@@ -62,3 +62,7 @@ def is_valid_ipv6_address(address: Union[str, bytes]) -> bool:
     except socket.error:  # not a valid address
         return False
     return True
+
+
+def is_valid_hostname(address: str) -> bool:
+    return HOSTNAME_REGEX.match(address) is not None

@@ -1,8 +1,7 @@
 
 
 __all__ = [
-    'AIOLoError', 'Unsubscribed', 'StartError', 'StopError', 'DuplicateRoute', 'RouteDoesNotExist', 'SendError',
-    'RouteError', 'ServeError']
+    'AIOLoError', 'Unsubscribed', 'StartError', 'StopError', 'SendError', 'RouteError']
 
 
 class AIOLoError(Exception):
@@ -21,21 +20,9 @@ class StopError(AIOLoError):
     pass
 
 
-class DuplicateRoute(AIOLoError):
-    pass
-
-
-class RouteDoesNotExist(AIOLoError):
-    pass
-
-
 class SendError(AIOLoError):
     pass
 
 
 class RouteError(AIOLoError):
-    pass
-
-
-class ServeError(AIOLoError):
     pass

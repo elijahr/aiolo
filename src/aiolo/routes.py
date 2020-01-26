@@ -1,56 +1,93 @@
 import asyncio
 import collections.abc
-from typing import Union, Tuple
+from typing import Union, Tuple, Iterable
 
-from . import argdefs, exceptions, logs, paths, typedefs
+from . import typespecs, exceptions, logs, paths, types
 
 
 __all__ = ['Route', 'Sub', 'Subs']
 
 
 class Route:
-    __slots__ = ('path', 'argdef', 'subs', 'loop')
+    __slots__ = ('path', 'typespec', 'subs', 'loop')
 
     def __init__(
         self,
-        path: typedefs.PathTypes,
-        argdef: typedefs.ArgdefTypes = None,
-        loop: asyncio.AbstractEventLoop = None,
+        path: types.PathTypes,
+        typespec: types.TypeSpecTypes = None,
     ):
         self.subs = []
-        self.path = path if isinstance(path, paths.Path) else paths.Path(path)
-        self.argdef = argdef if isinstance(argdef, argdefs.Argdef) else argdefs.Argdef(argdef)
-        if loop is None:
-            loop = asyncio.get_event_loop()
-        self.loop = loop
+        self.path = path
+        self.typespec = typespec
+        self.loop = asyncio.get_event_loop()
 
     def __repr__(self):
-        return 'Route(%r, %r)' % (self.path, self.argdef)
+        return 'Route(%s, %s)' % (self.path.simplerepr, self.typespec.simplerepr)
 
     def __hash__(self):
-        return hash('%s:%s' % (self.path, self.argdef))
+        return hash('Route:%s,%s' % (hash(self.path), hash(self.typespec)))
+
+    def __contains__(self, other: Union['Route', Iterable['Route']]) -> bool:
+        if isinstance(other, Route):
+            routes = {other}
+        else:
+            routes = other
+        if not all(isinstance(r, Route) for r in routes):
+            raise TypeError('Invalid value for Route.__contains__: %s' % repr(routes))
+        if self.matches_any_path or {r.path for r in routes} in self.path:
+            if self.matches_any_args or all(self.typespec == r.typespec for r in routes):
+                return True
+        return True
+
+    def __eq__(self, other: 'Route') -> bool:
+        if not isinstance(other, Route):
+            raise TypeError('Invalid value for Route.__eq__: %s' % repr(other))
+        return self.path == other.path and self.typespec == other.typespec
+
+    def __lt__(self, other: 'Route') -> bool:
+        if not isinstance(other, Route):
+            raise TypeError('Invalid value for Route.__lt__: %s' % repr(other))
+        return self.path < other.path and self.typespec < other.typespec
 
     def __or__(self, other: 'Route') -> 'Route':
-        if self.argdef != other.argdef:
-            raise ValueError('Cannot join routes with mismatched argdefs (%r != %r)' % (self.argdef, other.argdef))
+        if self.typespec != other.typespec:
+            raise ValueError('Cannot join routes with mismatched typespecs (%r != %r)' % (
+                self.typespec, other.typespec))
         path = self.path | other.path
-        return self.__class__(path, self.argdef)
-
-    def __and__(self, other: 'Route') -> 'Route':
-        return self.__or__(other)
+        return self.__class__(path, self.typespec)
 
     @property
     def is_pattern(self) -> bool:
         return self.path.is_pattern
 
-    def pub_soon_threadsafe(self, item: typedefs.PubTypes):
+    @property
+    def is_simple_pattern(self) -> bool:
+        return self.path.is_simple_pattern
+
+    @property
+    def matches_any(self):
+        return self.matches_any_path and self.matches_any_args
+
+    @property
+    def matches_any_path(self):
+        return self.path.matches_any
+
+    @property
+    def matches_any_args(self):
+        return self.typespec.matches_any
+
+    @property
+    def matches_no_args(self):
+        return self.typespec.matches_no
+
+    def pub_soon_threadsafe(self, item: types.PubTypes):
         self.loop.call_soon_threadsafe(self.pub_nowait, item)
 
-    def pub_nowait(self, item: typedefs.PubTypes):
+    def pub_nowait(self, item: types.PubTypes):
         for s in self.subs:
             s.pub_nowait(item)
 
-    async def pub(self, item: typedefs.PubTypes):
+    async def pub(self, item: types.PubTypes):
         await asyncio.gather(*[
             s.pub(item)
             for s in self.subs
@@ -73,27 +110,55 @@ class Sub(collections.abc.AsyncIterator):
     def __init__(self, route: Route):
         self.route = route
         self.inbox = asyncio.Queue()
-        logs.logger.debug('%r: created', self)
+        logs.debug('%r: created', self)
 
     def __repr__(self):
         return 'Sub(%r)' % self.route
+
+    def __hash__(self):
+        return hash('Sub:%s' % hash(self.route))
+
+    def __eq__(self, other: Union['Sub', 'Subs']) -> bool:
+        if isinstance(other, Sub):
+            return self.route == other.route
+        elif isinstance(other, Subs):
+            return self == other
+        else:
+            raise TypeError('Invalid value for Sub.__eq__: %s' % repr(other))
+
+    def __lt__(self, other: Union['Sub', 'Subs']) -> bool:
+        if isinstance(other, Sub):
+            return self.route < other.route
+        elif isinstance(other, Subs):
+            return self < other
+        else:
+            raise TypeError('Invalid value for Sub.__lt__: %s' % repr(other))
+
+    def __len__(self):
+        return 1
+
+    def __contains__(self, other: Union['Sub', 'Subs', Route]) -> bool:
+        if isinstance(other, Route):
+            return self.route == other
+        elif isinstance(other, Sub):
+            return self.route == other.route
+        elif isinstance(other, Subs):
+            return self == other
+        raise TypeError('Invalid value for Sub.__contains__: %s' % repr(other))
 
     def __or__(self, other: Union['Sub', 'Subs']) -> 'Subs':
         if isinstance(other, Sub):
             return Subs(self, other)
         return other | self
 
-    def __and__(self, other: Union['Sub', 'Subs']) -> 'Subs':
-        return self.__or__(other)
-
     def __aiter__(self) -> 'Sub':
         return self
 
-    async def __anext__(self, as_tuple: bool = False) -> Union[typedefs.PubTypes, Tuple[Route, typedefs.PubTypes]]:
+    async def __anext__(self, as_tuple: bool = False) -> Union[types.PubTypes, Tuple[Route, types.PubTypes]]:
         try:
-            logs.logger.debug('%r: waiting for next item in inbox...', self)
+            logs.debug('%r: waiting for next item in inbox...', self)
             msg = await self.inbox.get()
-            logs.logger.debug('%r: got item from inbox %r', self, msg)
+            logs.debug('%r: got item from inbox %r', self, msg)
             self.inbox.task_done()
             if isinstance(msg, Exception):
                 raise msg
@@ -104,12 +169,12 @@ class Sub(collections.abc.AsyncIterator):
                 return self.route, msg
             return msg
 
-    def pub_nowait(self, item: typedefs.PubTypes):
-        logs.logger.debug('%r: publishing %r', self, item)
+    def pub_nowait(self, item: types.PubTypes):
+        logs.debug('%r: publishing %r', self, item)
         self.inbox.put_nowait(item)
 
-    async def pub(self, item: typedefs.PubTypes):
-        logs.logger.debug('%r: publishing %r', self, item)
+    async def pub(self, item: types.PubTypes):
+        logs.debug('%r: publishing %r', self, item)
         await self.inbox.put(item)
 
     async def unsub(self):
@@ -120,28 +185,52 @@ class Subs(collections.abc.AsyncIterator):
     __slots__ = ('_subs', '_buffer')
 
     def __init__(self, *subs: Sub):
-        self._subs = list(subs)
+        self._subs = set(subs)
         self._buffer = []
 
     def __repr__(self):
-        return 'Subs(%s)' % ', '.join([repr(s) for s in self._subs])
+        return 'Subs(%s)' % ', '.join([repr(s) for s in sorted(self._subs)])
+
+    def __len__(self):
+        return len(self._subs)
+
+    def __hash__(self):
+        return hash('|'.join([str(hash(s)) for s in sorted(self._subs)]))
+
+    def __eq__(self, other: Union['Sub', 'Subs']) -> bool:
+        if not isinstance(other, (Sub, Subs)):
+            raise TypeError('Invalid value for Subs.__eq__: %s' % repr(other))
+        return hash(self) == hash(other)
+
+    def __contains__(self, other: Union['Sub', 'Subs', Route]) -> bool:
+        if isinstance(other, Route):
+            return any(other in sub for sub in self._subs)
+        elif isinstance(other, Sub):
+            return any(other == sub for sub in self._subs)
+        elif isinstance(other, Subs):
+            return other._subs.issubset(self._subs)
+        raise TypeError('Invalid value for Subs.__contains__: %s' % repr(other))
+
+    def __ior__(self, other: Union[Sub, 'Subs']) -> 'Subs':
+        if isinstance(other, Sub):
+            self._subs.add(other)
+        else:
+            self._subs |= other._subs
+        return self
 
     def __or__(self, other: Union[Sub, 'Subs']) -> 'Subs':
-        subs = list(self._subs)
+        sub_set = set(self._subs)
         if isinstance(other, Sub):
-            subs.append(other)
+            sub_set.add(other)
         else:
-            subs += other._subs
-        return self.__class__(*subs)
-
-    def __and__(self, other: Union['Sub', 'Subs']) -> 'Subs':
-        return self.__or__(other)
+            sub_set |= other._subs
+        return self.__class__(*tuple(sub_set))
 
     def __aiter__(self) -> 'Subs':
         return self
 
-    async def __anext__(self) -> Tuple[Route, typedefs.PubTypes]:
-        logs.logger.debug('%r: waiting for next item in typedefs.PubTypes inbox...', self)
+    async def __anext__(self) -> Tuple[Route, types.PubTypes]:
+        logs.debug('%r: waiting for next item in types.PubTypes inbox...', self)
         if not self._buffer:
             done, _ = await asyncio.wait([
                 asyncio.ensure_future(sub.__anext__(as_tuple=True))
@@ -150,17 +239,17 @@ class Subs(collections.abc.AsyncIterator):
             for task in done:
                 self._buffer.append(task)
         msg = await self._buffer.pop(0)
-        # this sleep wakes up the loop, and OSC only offers 1/32 timetag granularity, so sleeping for less
-        # than that ensures we don't lose any granularity
+        # this sleep wakes up the loop
+        # TODO: is this really true/necessary?
         await asyncio.sleep(1/33)
-        logs.logger.debug('%r: got item from inbox %r', self, msg)
+        logs.debug('%r: got item from inbox %r', self, msg)
         return msg
 
-    def pub_nowait(self, item: typedefs.PubTypes):
+    def pub_nowait(self, item: types.PubTypes):
         for s in self._subs:
             s.pub_nowait(item)
 
-    async def pub(self, item: typedefs.PubTypes):
+    async def pub(self, item: types.PubTypes):
         await asyncio.gather(*[
             s.pub(item)
             for s in self._subs
@@ -171,3 +260,6 @@ class Subs(collections.abc.AsyncIterator):
             s.unsub()
             for s in self._subs
         ])
+
+
+ANY_ROUTE = Route(paths.ANY_PATH, typespecs.ANY_ARGS)

@@ -1,6 +1,9 @@
 # cython: language_level=3
 
-from . cimport defs
+from . cimport abstractspecs
 
-cdef class Path(defs.Def):
+cdef class Path(abstractspecs.AbstractSpec):
     pass
+
+
+cpdef bint pattern_match(string, pattern)

@@ -1,163 +1,190 @@
+import array
 import datetime
 
-import aiolo
+from aiolo import FLOAT, BLOB, INT64, MIDI, Midi, INT32, CHAR, TRUE, TimeTag, INT64_MAX, INT32_MAX, NIL, INFINITY, \
+    SYMBOL, TIMETAG, INT64_MIN, STRING, EPOCH_UTC, FALSE, DOUBLE, INFINITUM, INT32_MIN
 
 
-TYPE_TEST_DATA = {
-    '/lo_int32': {
-        'argdefs': (aiolo.INT32, ),
-        'valid': (
-            (42, [[42]]),
-            (-42, [[-42]]),
-            (42.0, [[42]]),
-            (True, [[1]]),
-            (False, [[0]]),
-            ('42', [[42]]),
-            (b'42', [[42]]),
-            (aiolo.INT32_MAX, [[aiolo.INT32_MAX]]),
-            (aiolo.INT32_MIN, [[aiolo.INT32_MIN]]),
-        ),
-        'invalid': (None, 'f00', b'\x09', aiolo.INT32_MAX+1, aiolo.INT32_MIN-1,)
-    },
-    '/lo_int64': {
-        'argdefs': (aiolo.INT64, int),
-        'valid': (
-            (42, [[42]]),
-            (-42, [[-42]]),
-            (42.0, [[42]]),
-            (True, [[1]]),
-            (False, [[0]]),
-            ('42', [[42]]),
-            (b'42', [[42]]),
-            (aiolo.INT64_MAX, [[aiolo.INT64_MAX]]),
-            (aiolo.INT64_MIN, [[aiolo.INT64_MIN]]),
-        ),
-        'invalid': (None, 'f00', b'\x09', aiolo.INT64_MAX+1, aiolo.INT64_MIN-1,)
-    },
-    '/lo_float': {
-        'argdefs': (aiolo.FLOAT,),
-        'valid': (
-            (42, [[42.0]]),
-            (-42, [[-42.0]]),
-            (42.0, [[42.0]]),
-            (-42.0, [[-42.0]]),
-            (True, [[1.0]]),
-            (False, [[0.0]]),
-        ),
-        'invalid': (None, ),
-    },
-    '/lo_double': {
-        'argdefs': (aiolo.DOUBLE, float),
-        'valid': (
-            (42, [[42.0]]),
-            (-42, [[-42.0]]),
-            (42.0, [[42.0]]),
-            (-42.0, [[-42.0]]),
-            (True, [[1.0]]),
-            (False, [[0.0]]),
-        ),
-        'invalid': (None, ),
-    },
-    '/lo_string': {
-        'argdefs': (aiolo.STRING, str),
-        'valid': (
-            ('', [['']]),
-            (42, [['42']]),
-            (42.0, [['42.0']]),
-            ('42', [['42']]),
-            (b'***', [['***']]),
-            (bytearray([42, 42, 42]), [['***']]),
-        ),
-        'invalid': tuple(),
-    },
-    '/lo_symbol': {
-        'argdefs': (aiolo.SYMBOL, ),
-        'valid': (
-            ('', [['']]),
-            (42, [['42']]),
-            (42.0, [['42.0']]),
-            ('42', [['42']]),
-            (b'***', [['***']]),
-            (bytearray([42, 42, 42]), [['***']]),
-        ),
-        'invalid': tuple(),
-    },
-    '/lo_char': {
-        'argdefs': (aiolo.CHAR, ),
-        'valid': (
-            (42, [[b'*']]),
-            (42.0, [[b'*']]),
-            (1, [[b'\x01']]),
-            ('1', [[b'1']]),
-            (b'1', [[b'1']]),
-            (bytearray([1]), [[b'\x01']]),
-            (True, [[b'\x01']]),
-            (False, [[b'\x00']]),
-        ),
-        'invalid': (
-            '',
-            '42',
-            bytearray([42, 42]),
-            None,
-        ),
-    },
-    '/lo_blob': {
-        'argdefs': (aiolo.BLOB, bytes, bytearray),
-        'valid': (
-            (42, [[b'42']]),
-            (42.0, [[b'42.0']]),
-            ('999', [[b'999']]),
-            (b'999', [[b'999']]),
-            (b'***', [[b'***']]),
-            (bytearray([42, 42, 42]), [[b'***']]),
-        ),
-        'invalid': (b'', '', bytearray()),
-    },
-    '/lo_timetag': {
-        'argdefs': (aiolo.TIMETAG, aiolo.TimeTag),
-        'valid': (
-            (42, [[aiolo.TimeTag(42)]]),
-            (42.1, [[aiolo.TimeTag(42.1)]]),
-            (aiolo.TimeTag(aiolo.EPOCH_UTC + datetime.timedelta(seconds=42)),
-             [[aiolo.TimeTag(aiolo.EPOCH_UTC + datetime.timedelta(seconds=42))]]),
-            (aiolo.EPOCH_UTC + datetime.timedelta(seconds=42),
-             [[aiolo.TimeTag(aiolo.EPOCH_UTC + datetime.timedelta(seconds=42))]]),
-            (True, [[aiolo.TimeTag(1)]]),
-            (False, [[aiolo.TimeTag(0)]]),
-        ),
-        'invalid': (None, (1, 2, 3)),
-    },
-    '/lo_midi': {
-        'argdefs': (aiolo.MIDI, aiolo.Midi),
-        'valid': (
-            (aiolo.Midi(1, 2, 3, 4),
-             [[aiolo.Midi(1, 2, 3, 4)]]),
-            (bytearray([1, 2, 3, 4]),
-             [[aiolo.Midi(1, 2, 3, 4)]]),
-        ),
-        'invalid': (
-            bytearray([42]),
-            bytearray([42, 42, 42, 42, 42]),
-        )
-    },
-    '/lo_true': {
-        'argdefs': (aiolo.TRUE, True),
-        'valid': ((True, [[True]]), (1, [[True]]), ('foo', [[True]]), ),
-        'invalid': (False, None, 0, '')
-    },
-    '/lo_false': {
-        'argdefs': (aiolo.FALSE, False),
-        'valid': ((False, [[False]]), (0, [[False]]), ('', [[False]]), (None, [[False]]), ),
-        'invalid': (True, 1, 'foo')
-    },
-    '/lo_nil': {
-        'argdefs': (aiolo.NIL, None, type(None)),
-        'valid': ((None, [[None]]), ),
-        'invalid': (True, False, 1, 0, 'foo')
-    },
-    '/lo_infinitum': {
-        'argdefs': (aiolo.INFINITUM, aiolo.INFINITY),
-        'valid': ((aiolo.INFINITY, [[aiolo.INFINITY]]), ),
-        'invalid': (42.0, -aiolo.INFINITY, True, False, None, 1, 0, 'foo')
-    }
-}
+class ArgdefTestData:
+    path = None
+    typespecs = []
+    valid = []
+    overflow_error = []
+    type_error = []
+    value_error = []
+
+
+class Int32TestData(ArgdefTestData):
+    path = '/int32'
+    typespecs = [INT32]
+    valid = [
+        [INT32_MAX, INT32_MAX],
+        [INT32_MIN, INT32_MIN],
+    ]
+    overflow_error = [INT32_MAX + 1, INT32_MIN - 1]
+    type_error = [None, 42.0, '42', b'42']
+
+
+class Int64TestData(ArgdefTestData):
+    path = '/int64'
+    typespecs = [INT64, int]
+    valid = [
+        [INT64_MAX, INT64_MAX],
+        [INT64_MIN, INT64_MIN]
+    ]
+    overflow_error = [INT64_MAX + 1, INT64_MIN - 1]
+    type_error = [None, 42.0, '42', b'42']
+
+
+class FloatTestData(ArgdefTestData):
+    path = '/float'
+    typespecs = [FLOAT]
+    valid = [
+        [42.0, 42.0],
+        [-42.0, -42.0],
+        [1.199999978106707e-38, 1.199999978106707e-38],
+        [3.3999999521443642e+38, 3.3999999521443642e+38],
+    ]
+    overflow_error = [
+        1.7976931348623157e+308,
+        2.2250738585072014e-308,
+    ]
+    value_error = [INFINITY]
+    type_error = [None, 1]
+
+
+class DoubleTestData(FloatTestData):
+    path = '/double'
+    typespecs = [DOUBLE, float]
+    valid = [
+        [2.2250738585072014e-308, 2.2250738585072014e-308],
+        [1.7976931348623157e+308, 1.7976931348623157e+308],
+    ]
+    overflow_error = []
+
+
+class StringTestData(ArgdefTestData):
+    path = '/string'
+    typespecs = [STRING, str]
+    valid = [
+        ['', ''],
+        ['42', '42'],
+    ]
+    type_error = [None, b'a', 42, 42.0, True]
+
+
+class SymbolTestData(StringTestData):
+    path = '/symbol'
+    typespecs = [SYMBOL]
+
+
+class CharTestData(ArgdefTestData):
+    path = '/char'
+    typespecs = [CHAR]
+    valid = (
+        [42, '*'],
+        [1, '\x01'],
+        ['1', '1'],
+    )
+    overflow_error = [
+        '',
+        1000,
+        '42',
+    ]
+    type_error = [None, 42.0]
+
+
+class BlobTestData(ArgdefTestData):
+    path = '/blob'
+    typespecs = [BLOB, bytes, array.array]
+    valid = [
+        [b'123', array.array('b', b'123')],
+        [array.array('b', b'***'), array.array('b', b'***')],
+    ]
+    value_error = [b'', array.array('b')]
+    type_error = [42, 42.0, 'foo']
+
+
+class TimeTagTestData(ArgdefTestData):
+    path = '/timetag'
+    typespecs = [TIMETAG, TimeTag]
+    valid = [
+        [42, TimeTag(42)],
+        [42.1, TimeTag(42.1)],
+        [TimeTag(EPOCH_UTC + datetime.timedelta(seconds=42)),
+         TimeTag(EPOCH_UTC + datetime.timedelta(seconds=42))],
+        [EPOCH_UTC + datetime.timedelta(seconds=42),
+         TimeTag(EPOCH_UTC + datetime.timedelta(seconds=42))],
+    ]
+    type_error = [None, '42']
+
+
+class MidiTestData(ArgdefTestData):
+    path = '/midi'
+    typespecs = [MIDI, Midi]
+    valid = [
+        [array.array('b', [1, 2, 3, 4]),
+         Midi(1, 2, 3, 4)],
+        [Midi(1, 2, 3, 4),
+         Midi(1, 2, 3, 4)],
+    ]
+    type_error = ['42', 42, array.array('b', [1, 2, 3, 4, 5])]
+
+
+class TrueTestData(ArgdefTestData):
+    path = '/true'
+    typespecs = [TRUE, True]
+    valid = [
+        [True, True],
+        [1, True],
+    ]
+    value_error = [False, 0]
+    type_error = [None, '', 'foo']
+
+
+class FalseTestData(ArgdefTestData):
+    path = '/false'
+    typespecs = [FALSE, False]
+    valid = [
+        [False, False],
+        [0, False],
+    ]
+    value_error = [True, 1]
+    type_error = [None, '', 'foo']
+
+
+class NilTestData(ArgdefTestData):
+    path = '/nil'
+    typespecs = [NIL, [None], type(None)]
+    valid = [
+        [None, None],
+    ]
+    type_error = [True, False, 1, 0, 'foo']
+
+
+class InfinitumTestData(ArgdefTestData):
+    path = '/infinitum'
+    typespecs = [INFINITUM, INFINITY]
+    valid = [
+        [INFINITY, INFINITY],
+    ]
+    value_error = [42.0, -INFINITY]
+    type_error = [True, False, None, 1, 0, 'foo']
+
+
+ARGDEF_TEST_DATA = [
+    Int32TestData,
+    Int64TestData,
+    FloatTestData,
+    DoubleTestData,
+    StringTestData,
+    SymbolTestData,
+    CharTestData,
+    BlobTestData,
+    TimeTagTestData,
+    MidiTestData,
+    TrueTestData,
+    FalseTestData,
+    NilTestData,
+    InfinitumTestData
+]

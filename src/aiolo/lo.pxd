@@ -230,17 +230,13 @@ cdef extern from "lo/lo.h" nogil:
 
     int lo_server_wait(lo_server s, int timeout)
 
-    int lo_servers_wait(lo_server* s, int* status, int num_servers, int timeout)
-
     int lo_server_recv_noblock(lo_server s, int timeout)
-
-    int lo_servers_recv_noblock(lo_server* s, int* recvd, int num_servers, int timeout)
 
     int lo_server_recv(lo_server s)
 
-    lo_method lo_server_add_method(lo_server s, char* path, char* typespec, lo_method_handler h, void* user_data)
+    lo_method lo_server_add_method(lo_server s, char* path, char* raw_typespec, lo_method_handler h, void* user_data)
 
-    void lo_server_del_method(lo_server s, char* path, char* typespec)
+    void lo_server_del_method(lo_server s, char* path, char* raw_typespec)
 
     int lo_server_del_lo_method(lo_server s, lo_method m)
 
@@ -278,7 +274,7 @@ cdef extern from "lo/lo.h" nogil:
 
     uint32_t lo_blobsize(lo_blob b)
 
-    int lo_pattern_match(char* string, char* pattern)
+    bint lo_pattern_match(char* string, char* pattern)
 
     double lo_timetag_diff(lo_timetag a, lo_timetag b)
 
@@ -308,18 +304,15 @@ cdef extern from "lo/lo.h" nogil:
 
     lo_server_thread lo_server_thread_new_multicast(char* group, char* port, lo_err_handler err_h)
 
-    IF LO_VERSION >= "0.30":
-        lo_server_thread lo_server_thread_new_multicast_iface(char* group, char* port, char* iface, char* ip, lo_err_handler err_h)
-
     lo_server_thread lo_server_thread_new_with_proto(char* port, int proto, lo_err_handler err_h)
 
     lo_server_thread lo_server_thread_new_from_url(char* url, lo_err_handler err_h)
 
     void lo_server_thread_free(lo_server_thread st)
 
-    lo_method lo_server_thread_add_method(lo_server_thread st, char* path, char* typespec, lo_method_handler h, void* user_data)
+    lo_method lo_server_thread_add_method(lo_server_thread st, char* path, char* raw_typespec, lo_method_handler h, void* user_data)
 
-    void lo_server_thread_del_method(lo_server_thread st, char* path, char* typespec)
+    void lo_server_thread_del_method(lo_server_thread st, char* path, char* raw_typespec)
 
     int lo_server_thread_del_lo_method(lo_server_thread st, lo_method m)
 
@@ -369,9 +362,22 @@ cdef extern from "lo/lo.h" nogil:
 
     void* lo_blob_dataptr(lo_blob b)
 
-    void * lo_error_get_context()
-
     void lo_version(char* verstr, int verstr_size, int* major, int* minor, char* extra, int extra_size, int* lt_major, int* lt_minor, int* lt_bug)
+
+    IF _LO_VERSION >= "0.30":
+
+        void *lo_error_get_context(void)
+
+        lo_server_thread lo_server_thread_new_multicast_iface(char* group, char* port, char* iface, char* ip, lo_err_handler err_h)
+
+        int lo_servers_wait(lo_server* s, int* status, int num_servers, int timeout)
+
+        int lo_servers_recv_noblock(lo_server* s, int* recvd, int num_servers, int timeout)
+
+    ELSE:
+
+        void * lo_error_get_context()
+
 
 
 ctypedef struct lo_address_header:

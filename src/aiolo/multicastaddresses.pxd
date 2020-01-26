@@ -1,6 +1,6 @@
 # cython: language_level=3
 
-from . cimport addresses, servers
+from . cimport abstractservers, addresses
 
 cdef class MultiCastAddress(addresses.Address):
-    cdef public servers.Server server
+    cdef public abstractservers.AbstractServer server

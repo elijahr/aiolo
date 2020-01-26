@@ -1,9 +1,12 @@
 # cython: language_level=3
 
-from typing import Iterable
+from typing import Iterable, List
 
-from . import typedefs
-from . cimport lo, defs
+from cpython cimport array
+import array
+
+from . import types
+from . cimport abstractspecs, lo, messages
 
 # 32 bit signed integer.
 cpdef char LO_INT32
@@ -37,14 +40,26 @@ cpdef char LO_NIL
 # Symbol representing the value Infinitum.
 cpdef char LO_INFINITUM
 
-cdef dict ARGDEF_INT_LOOKUP
+cdef array.array ARGTYPES
+
+cdef array.array ARGTYPES_INTS
+
+cdef array.array ARGTYPES_FLOATS
+
+cdef array.array ARGTYPES_STRINGS
 
 cdef tuple EMPTY_STRINGS
 
-cdef tuple BOOLS_OR_NONE
-
-cdef class Argdef(defs.Def):
-    cdef lo.lo_message build_lo_message(Argdef self, object args: Iterable[typedefs.MessageTypes]) except NULL
+cdef class TypeSpec(abstractspecs.AbstractSpec):
+    cpdef list unpack_message(self, messages.Message message)
     cdef list unpack_args(self, lo.lo_arg ** argv, int argc)
+    cdef lo.lo_message pack_lo_message(self, object args: Iterable[types.MessageTypes]) except NULL
 
-cpdef bytes guess_argtypes(object args: Iterable[typedefs.MessageTypes])
+cpdef array.array guess_for_arg_list(object args: Iterable[types.MessageTypes])
+
+cpdef void flatten_typespec_into(
+    object typespec: types.TypeSpecTypes,
+    array.array into: array.array
+)
+
+cpdef void flatten_args_into(object data: Iterable, list into: List)

@@ -27,6 +27,7 @@ cdef double lo_timetag_to_unix_timestamp(lo.lo_timetag lo_timetag)
 
 cdef double lo_timetag_to_osc_timestamp(lo.lo_timetag lo_timetag)
 
+cdef FrozenTimeTag lo_timetag_to_timetag(lo.lo_timetag lo_timetag)
 
 # Exported to Python
 cpdef double timetag_parts_to_unix_timestamp(uint32_t sec, uint32_t frac)

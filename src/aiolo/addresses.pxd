@@ -11,3 +11,5 @@ cdef class Address:
 
     cdef int _message(self, messages.Message bundle)
     cdef int _bundle(self, bundles.Bundle bundle)
+
+cdef Address lo_address_to_address(lo.lo_address lo_address)

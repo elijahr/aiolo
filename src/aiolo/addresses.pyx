@@ -2,69 +2,46 @@
 
 from typing import Union
 
-from . import exceptions, ips, logs, typedefs
+from . import exceptions, ips, logs, protos, types
 from . cimport bundles, lo, messages, paths
 
 
-__all__ = ['Address', 'PROTO_DEFAULT', 'PROTO_UDP', 'PROTO_UNIX', 'PROTO_TCP']
-
-PROTO_DEFAULT = 0x0
-PROTO_UDP = 0x1
-PROTO_UNIX = 0x2
-PROTO_TCP = 0x4
-
-PROTOCOL_NAMES = {
-    PROTO_DEFAULT: 'PROTO_DEFAULT',
-    PROTO_UDP: 'PROTO_UDP',
-    PROTO_UNIX: 'PROTO_UNIX',
-    PROTO_TCP: 'PROTO_TCP',
-}
-
-PROTOCOLS_BY_NAME = {
-    'PROTO_DEFAULT': PROTO_DEFAULT,
-    'PROTO_UDP': PROTO_UDP,
-    'PROTO_UNIX': PROTO_UNIX,
-    'PROTO_TCP': PROTO_TCP,
-    b'PROTO_DEFAULT': PROTO_DEFAULT,
-    b'PROTO_UDP': PROTO_UDP,
-    b'PROTO_UNIX': PROTO_UNIX,
-    b'PROTO_TCP': PROTO_TCP,
-}
+__all__ = ['Address']
 
 
 cdef class Address:
     def __init__(
         self,
         *,
-        url: Union[str, bytes, None] = None,
-        protocol: Union[int, str, bytes, None] = None,
-        host: Union[str, bytes, None] = None,
-        port: Union[str, bytes, int, None] = None,
+        url: Union[str, None] = None,
+        proto: Union[int, str, None] = None,
+        host: Union[str, None] = None,
+        port: Union[str, int, None] = None,
         no_delay: bool = False,
         stream_slip: bool = False,
-        ttl: int = -1
+        ttl: int = -1,
     ):
-        if url and (host or port or (protocol is not None)):
-            raise ValueError('Must provide either only url or host/port with optional protocol')
+        cdef char * chost = NULL
+
+        if url and (host or port or (proto is not None)):
+            raise ValueError('Must provide either only url or host/port with optional proto')
         elif url:
-            if isinstance(url, str):
-                url = url.encode('utf8')
+            url = url.encode('utf8')
             self.lo_address = lo.lo_address_new_from_url(url)
         elif port:
-            if isinstance(host, str):
+            if host:
                 host = host.encode('utf8')
-            if isinstance(port, str):
-                port = port.encode('utf8')
-            elif isinstance(port, int):
-                port = str(port).encode('utf8')
-            if protocol is not None:
-                if isinstance(protocol, (str, bytes)):
-                    protocol = PROTOCOLS_BY_NAME[protocol]
-                self.lo_address = lo.lo_address_new_with_proto(protocol, host, port)
+                chost = host
+            port = str(port).encode('utf8')
+            if proto is not None:
+                if proto not in protos.PROTOS_VALID:
+                    raise ValueError('Invalid protocol, must be one of PROTO_UNIX, PROTO_TCP, or PROTO_UDP')
+                proto = protos.get_proto_id(proto)
+                self.lo_address = lo.lo_address_new_with_proto(proto, chost, port)
             else:
-                self.lo_address = lo.lo_address_new(host, port)
+                self.lo_address = lo.lo_address_new(chost, port)
         else:
-            raise ValueError('Must provide either url or host/port with optional protocol')
+            raise ValueError('Must provide either url or host/port with optional proto')
 
         if self.lo_address is NULL:
             raise MemoryError
@@ -91,21 +68,27 @@ cdef class Address:
             rest = ''
         if self.url:
             return '%s(url=%r%s)' % (self.__class__.__name__, self.url, rest)
-        elif self.protocol:
-            return '%s(protocol=%r, host=%r, port=%r%s)' % (
-                self.__class__.__name__, self.protocol, self.host, self.port, rest)
+        elif self.proto:
+            return '%s(proto=%r, host=%r, port=%r%s)' % (
+                self.__class__.__name__, self.proto, self.host, self.port, rest)
+
+    def __eq__(self, other: Address):
+        return self.url == other.url \
+               and self.proto == other.proto \
+               and self.host == other.host \
+               and self.port == other.port
 
     @property
     def url(self):
         return (<bytes>lo.lo_address_get_url(self.lo_address)).decode('utf8')
 
     @property
-    def protocol(self):
-        return (<bytes>lo.lo_address_get_protocol(self.lo_address)).decode('utf8')
+    def proto(self):
+        return protos.PROTOS_BY_NAME[(<bytes>lo.lo_address_get_protocol(self.lo_address))]
 
     @property
-    def protocol_name(self):
-        return PROTOCOL_NAMES[lo.lo_address_get_protocol(self.lo_address)]
+    def proto_name(self):
+        return protos.PROTOS[(<bytes>lo.lo_address_get_protocol(self.lo_address))]
 
     @property
     def host(self):
@@ -150,29 +133,27 @@ cdef class Address:
         return (<bytes>iface).decode('utf8')
 
     @interface.setter
-    def interface(self, interface: Union[str, bytes]):
-        cdef char * iface = NULL
-        if isinstance(interface, str):
+    def interface(self, interface: Union[str, None]):
+        cdef char * iface = <char*>0
+        if interface is not None:
             interface = interface.encode('utf8')
-        if isinstance(interface, bytes):
             iface = interface
-        elif interface is not None:
-            raise ValueError('Invalid interface value %s' % repr(interface))
         if lo.lo_address_set_iface(self.lo_address, iface, NULL) != 0:
             raise ValueError('Could not set interface to %s' % repr(interface))
 
-    def set_ip(self, ip: Union[str, bytes]):
+    def set_ip(self, ip: Union[str, None]):
         cdef:
             char * iface = <char*>0
             char * i = NULL
+
+        if ip not in ('', b'', None) and not ips.is_valid_ip_address_or_hostname(ip):
+            raise ValueError('Invalid value for ip %s, not an IP address' % repr(ip))
+
         if isinstance(ip, str):
             ip = ip.encode('utf8')
-        if isinstance(ip, bytes):
             i = ip
         elif ip is not None:
             raise ValueError('Invalid ip value %s' % repr(ip))
-        if not ips.is_valid_ip_address(ip):
-            raise ValueError('Invalid value for ip %s, not an IP address' % repr(ip))
         if lo.lo_address_set_iface(self.lo_address, iface, i) != 0:
             raise ValueError('Could not set ip to %s' % repr(ip))
 
@@ -182,16 +163,25 @@ cdef class Address:
                 '%s (%s)' % ((<bytes>lo.lo_address_errstr(self.lo_address)).decode('utf8'),
                              str(lo.lo_address_errno(self.lo_address))))
 
-    def send(self, route: Union[typedefs.RouteTypes], *data: typedefs.MessageTypes) -> int:
+    def send(self, route: Union[types.RouteTypes], *data: types.MessageTypes) -> int:
         message = messages.Message(route, *data)
         return self.message(message)
+
+    def delay(
+        self,
+        timetag: types.TimeTagTypes,
+        route: Union[types.RouteTypes],
+        *data: types.MessageTypes
+    ) -> int:
+        bundle = bundles.Bundle(data, timetag)
+        return self._bundle(bundle)
 
     def message(self, message: messages.Message) -> int:
         if message.route.path.matches_any:
             raise ValueError('Message must be sent to a specific path or pattern')
         return self._message(message)
 
-    def bundle(self, bundle: typedefs.BundleTypes, timetag: typedefs.TimeTagTypes = None) -> int:
+    def bundle(self, bundle: types.BundleTypes, timetag: types.TimeTagTypes = None) -> int:
         if not isinstance(bundle, bundles.Bundle):
             bundle = bundles.Bundle(bundle, timetag)
         elif timetag is not None:
@@ -199,24 +189,54 @@ cdef class Address:
         return self._bundle(bundle)
 
     cdef int _message(self, messages.Message message):
+        path = (<paths.Path>message.route.path).as_bytes
         cdef:
-            char * path = (<paths.Path>message.route.path).charp()
+            int count
+            char * p = path
             lo.lo_message lo_message = message.lo_message
-        logs.logger.debug('%r: sending %r', self, message)
-        count = lo.lo_send_message(self.lo_address, path, lo_message)
+
+        IF DEBUG: logs.logger.debug('%r: sending %r', self, message)
+
+        count = lo.lo_send_message(self.lo_address, p, lo_message)
 
         self.check_send_error()
         if count <= 0:
             raise exceptions.SendError(count)
-        logs.logger.debug('%r: sent %s bytes', self, count)
+        IF DEBUG: logs.logger.debug('%r: sent %s bytes', self, count)
         return count
 
     cdef int _bundle(self, bundles.Bundle bundle):
-        logs.logger.debug('%r: sending %r', self, bundle)
-        count = lo.lo_send_bundle(self.lo_address, (<bundles.Bundle>bundle).lo_bundle)
+        cdef:
+            int count
+            lo.lo_bundle lo_bundle = (<bundles.Bundle>bundle).lo_bundle
+
+        IF DEBUG: logs.logger.debug('%r: sending %r', self, bundle)
+
+        with nogil:
+            count = lo.lo_send_bundle(self.lo_address, lo_bundle)
+
         self.check_send_error()
         if count <= 0:
             raise exceptions.SendError(count)
-        logs.logger.debug('%r: sent %s bytes', self, count)
+        IF DEBUG: logs.logger.debug('%r: sent %s bytes', self, count)
         return count
 
+
+cdef Address lo_address_to_address(lo.lo_address lo_address):
+    url = (<bytes>lo.lo_address_get_url(lo_address)).decode('utf8')
+    proto = protos.PROTOS_BY_NAME[(<bytes>lo.lo_address_get_protocol(lo_address))]
+    host = (<bytes>lo.lo_address_get_hostname(lo_address)).decode('utf8') or None
+    port = (<bytes>lo.lo_address_get_port(lo_address)).decode('utf8') or None
+    ttl = lo.lo_address_get_ttl(lo_address) or None
+    init = {}
+    if url:
+        init['url'] = url
+    if proto:
+        init['proto'] = proto
+    if host:
+        init['host'] = host
+    if port:
+        init['port'] = port
+    if ttl:
+        init['ttl'] = ttl
+    return Address(**init)

@@ -14,13 +14,9 @@ Then:
 pip install aiolo
 ```
 
-## Supported platforms
-
-Travis CI tests with the following configurations:
-* Ubuntu 18.04 Bionic Beaver + liblo 0.29 + [CPython3.6, CPython3.7, CPython3.8, PyPy7.3.0 (3.6.9)]
-* OS X + liblo 0.29 + [CPython3.6, CPython3.7, CPython3.8, PyPy7.3.0 (3.6.9)]
-
 ## Examples
+
+One of the many beautiful things in Python is support for operator overloading. aiolo embraces this enthusiastically to offer the would-be OSC hacker an intuitive programming experience for objects such as `Message`, `Bundle`, `Route`, `Path`, and `ArgSpec`.
 
 ### [Simple echo server](https://github.com/elijahr/aiolo/blob/master/examples/echo_server.py)
 ```python
@@ -30,7 +26,7 @@ import logging
 import multiprocessing
 import sys
 
-from aiolo import logger, Address, Bundle, Message, Server, ANY_ARGS, NO_ARGS, Midi
+from aiolo import logger, Address, Bundle, Message, AioServer, ANY_ARGS, NO_ARGS, Midi
 
 
 def pub():
@@ -69,7 +65,7 @@ async def main(verbose):
         logger.addHandler(h)
         logger.setLevel(logging.DEBUG)
 
-    server = Server(url='osc.tcp://:10001')
+    server = AioServer(url='osc.tcp://:10001')
     server.start()
 
     # Create endpoints
@@ -115,7 +111,7 @@ if __name__ == '__main__':
 import asyncio
 import random
 
-from aiolo import MultiCast, MultiCastAddress, Route, Server
+from aiolo import MultiCast, MultiCastAddress, Route, AioServer
 
 
 async def sub(foo):
@@ -147,7 +143,7 @@ async def main():
     # Create a cluster of servers in the same multicast group
     cluster = []
     for i in range(10):
-        server = Server(multicast=multicast)
+        server = AioServer(multicast=multicast)
         # Have them all handle the same route
         server.route(foo)
         server.start()
@@ -175,6 +171,20 @@ if __name__ == '__main__':
 
 For additional usage see the [examples](https://github.com/elijahr/aiolo/blob/master/examples) and [tests](https://github.com/elijahr/aiolo/blob/master/test.py).
 
+## Supported platforms
+
+Travis CI tests with the following configurations:
+* Ubuntu 18.04 Bionic Beaver + liblo 0.29 + [CPython3.6, CPython3.7, CPython3.8, PyPy7.3.0 (3.6.9)]
+* OS X + liblo 0.29 + [CPython3.6, CPython3.7, CPython3.8, PyPy7.3.0 (3.6.9)]
+
 ## Contributing
 
 Pull requests are welcome, please file any issues you encounter.
+
+## Changelog
+
+### 3.1.1
+
+* Ensure ThreadedServer.start() waits for thread to be initialized
+* Fix bug where loop.remove_reader() was not being called on AioServer.stop()
+* Parallelized unit tests with pytest-xdist

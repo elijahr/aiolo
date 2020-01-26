@@ -12,11 +12,11 @@ __all__ = ['MultiCast']
 cdef class MultiCast:
     def __cinit__(
         self,
-        group: Union[bytes, str],
-        port: Union[bytes, str, int, None],
+        group: str,
+        port: Union[str, int, None],
         *,
-        iface: Union[bytes, str, None] = None,
-        ip: Union[bytes, str] = None
+        iface: Union[str, None] = None,
+        ip: Union[str, None] = None
     ):
         self.group = group
         self.port = port
@@ -25,16 +25,21 @@ cdef class MultiCast:
 
     def __init__(
         self,
-        group: Union[bytes, str],
-        port: Union[bytes, str, int],
+        group: str,
+        port: Union[str, int],
         *,
-        iface: Union[bytes, str, None] = None,
-        ip: Union[bytes, str] = None
+        iface: Union[str, None] = None,
+        ip: Union[str, None] = None
     ):
         pass
 
     def __repr__(self):
-        return 'MultiCast(%r, %r, iface=%r, ip=%r)' % (self.group, self.port, self.iface, self.ip)
+        parts = [repr(self.group), repr(self.port)]
+        if self.iface:
+            parts += ['iface=%r' % self.iface]
+        if self.ip:
+            parts += ['ip=%r' % self.ip]
+        return 'MultiCast(%s)' % ', '.join(parts)
 
     @property
     def group(self):
@@ -42,13 +47,11 @@ cdef class MultiCast:
 
     @group.setter
     def group(self, value):
-        if isinstance(value, str):
-            value = value.encode('utf8')
-        if not isinstance(value, bytes):
+        if not isinstance(value, str):
             raise ValueError('Invalid value for group %s' % repr(value))
-        if not ips.is_valid_ip_address(value):
-            raise ValueError('Invalid value for group %s, not an IP address' % repr(value))
-        self._group = value
+        if not ips.is_valid_ip_address_or_hostname(value):
+            raise ValueError('Invalid value for group %s, not an IP address or hostname' % repr(value))
+        self._group = value.encode('utf8')
 
     @property
     def port(self):
@@ -57,11 +60,11 @@ cdef class MultiCast:
     @port.setter
     def port(self, value):
         cdef char * val = NULL
+        if isinstance(value, int):
+            value = str(value)
         if isinstance(value, str):
             value = value.encode('utf8')
-        elif isinstance(value, int):
-            value = str(value).encode('utf8')
-        if value is not None and not isinstance(value, bytes):
+        elif value is not None:
             raise ValueError('Invalid value for port %s' % repr(value))
         self._port = value
 
@@ -73,7 +76,7 @@ cdef class MultiCast:
     def iface(self, value):
         if isinstance(value, str):
             value = value.encode('utf8')
-        if value is not None and not isinstance(value, bytes):
+        elif value is not None:
             raise ValueError('Invalid value for iface %s' % repr(value))
         self._iface = value
 
@@ -83,8 +86,9 @@ cdef class MultiCast:
 
     @ip.setter
     def ip(self, value):
-        if isinstance(value, str):
-            value = value.encode('utf8')
-        if value is not None and not isinstance(value, bytes) and not ips.is_valid_ip_address(value):
-            raise ValueError('Invalid value for ip %s' % repr(value))
+        if value is not None:
+            if isinstance(value, str) and ips.is_valid_ip_address_or_hostname(value):
+                value = value.encode('utf8')
+            else:
+                raise ValueError('Invalid value for ip %s' % repr(value))
         self._ip = value

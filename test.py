@@ -1,158 +1,241 @@
+import array
 import asyncio
+import contextlib
 import datetime
-import multiprocessing
 import random
 import sys
 from typing import Union
 
 import netifaces
-
-import aiolo
 import pytest
+import uvloop as uvloop
 
 import test_data
+from aiolo import MultiCast, AioServer, Address, Message, PROTO_UDP, PROTO_UNIX, TimeTag, FRAC_PER_SEC, \
+    NO_ARGS, Route, unix_timestamp_to_osc_timestamp, TT_IMMEDIATE, Sub, MultiCastAddress, Bundle, ANY_PATH, TypeSpec, \
+    Subs, StartError, PROTO_DEFAULT, EPOCH_UTC, ANY_ARGS, JAN_1970, ThreadedServer, Midi, PROTO_TCP, INFINITY, \
+    INFINITUM, TIMETAG, MIDI, NIL, FALSE, TRUE, BLOB, STRING, DOUBLE, INT64, Path, LO_VERSION
 
 
-CANCEL_TIMEOUT = 3
+CANCEL_TIMEOUT = -1
 
 
-def create_task(coro):
+def create_task(coro, cancel_timeout=CANCEL_TIMEOUT):
+    loop = asyncio.get_event_loop()
     if sys.version_info[:2] >= (3, 7):
         task = asyncio.create_task(coro)
     else:
-        task = asyncio.get_event_loop().create_task(coro)
+        task = loop.create_task(coro)
+    if cancel_timeout >= 0:
+        loop.call_later(cancel_timeout, task.cancel)
     return task
 
 
-@pytest.fixture
-def event_loop():
-    loop = asyncio.new_event_loop()
+def get_ipv4(iface):
+    try:
+        return netifaces.ifaddresses(iface)[netifaces.AF_INET][0]['addr']
+    except KeyError:
+        return None
+
+
+def now():
+    return datetime.datetime.now(datetime.timezone.utc)
+
+
+@pytest.fixture(params=[
+    iface
+    for iface in netifaces.interfaces()
+    if get_ipv4(iface) and get_ipv4(iface) != '127.0.0.1'
+])
+def ip_interface(request):
+    iface = request.param
+    return get_ipv4(iface), iface
+
+
+@pytest.fixture(params=[
+    asyncio,
+    uvloop
+])
+def event_loop(request):
+    loop_mod = request.param
+    loop = loop_mod.new_event_loop()
     asyncio.set_event_loop(loop)
     loop.set_debug(True)
-    yield loop
-    loop.close()
+    with contextlib.closing(loop):
+        yield loop
+
+
+@pytest.fixture(params=[
+    AioServer,
+    ThreadedServer
+])
+def any_server_class(request, event_loop):
+    return request.param
 
 
 @pytest.fixture
-@pytest.mark.asyncio
-async def server(event_loop):
-    server = aiolo.Server(url='osc.tcp://:10000')
-    server.start()
+async def any_server(any_server_class, unused_tcp_port_factory):
+    tries = 0
+
+    exc = None
+    server = any_server_class(port=unused_tcp_port_factory())
+    while tries < 3:
+        try:
+            server.start()
+        except StartError as exc:
+            await asyncio.sleep(0.1)
+            server = any_server_class(port=unused_tcp_port_factory())
+        else:
+            break
+        tries += 1
+    if not server.running:
+        raise StartError from exc
     yield server
     server.stop()
 
 
 @pytest.fixture
-async def address(server):
-    return aiolo.Address(url=server.url)
-
-
-@pytest.fixture
-@pytest.mark.asyncio
-async def threaded_server(event_loop):
-    threaded_server = aiolo.ThreadedServer(url='osc.tcp://:10001')
-    threaded_server.start()
-    # Give the thread some time to boot
-    await asyncio.sleep(1)
-    yield threaded_server
-    threaded_server.stop()
-
-
-@pytest.fixture
-@pytest.mark.asyncio
-async def multicast_cluster(event_loop):
-    multicast = aiolo.MultiCast('224.0.1.1', port=10001)
-    cluster = []
-    for i in range(3):
-        server = aiolo.Server(multicast=multicast)
-        server.start()
-        cluster.append(server)
-    yield cluster
-    for server in cluster:
-        server.stop()
-
-
-@pytest.fixture
-async def multicast_address(multicast_cluster):
-    return aiolo.MultiCastAddress(server=random.choice(multicast_cluster))
-
-
-@pytest.fixture
-def interfaces_by_ipv4():
-    def get_ipv4(iface):
+async def server(event_loop, unused_tcp_port_factory):
+    tries = 0
+    while tries < 3:
         try:
-            return netifaces.ifaddresses(iface)[netifaces.AF_INET][0]['addr']
-        except KeyError:
-            return None
-
-    return {
-        get_ipv4(iface): iface
-        for iface in netifaces.interfaces()
-        if get_ipv4(iface)
-    }
-
-
-def get_interfaces_by_ipv6():
-    def get_ipv6(iface):
-        try:
-            print(iface, netifaces.ifaddresses(iface)[netifaces.AF_INET6])
-            return netifaces.ifaddresses(iface)[netifaces.AF_INET6][0]['addr']
-        except KeyError:
-            return None
-    return {
-        get_ipv6(iface): iface
-        for iface in netifaces.interfaces()
-        if get_ipv6(iface)
-    }
+            server = AioServer(port=unused_tcp_port_factory())
+            server.start()
+        except StartError:
+            await asyncio.sleep(0.1)
+        else:
+            break
+        tries += 1
+    yield server
+    server.stop()
 
 
-@pytest.fixture
-def interfaces_by_ipv6():
-    return get_interfaces_by_ipv6()
+@pytest.mark.parametrize('index,expected_factories_length', zip(range(8), [8]*8))
+@pytest.mark.skip
+def test_server_init(index, expected_factories_length, any_server_class, unused_tcp_port):
+    """
+    Test that servers can be constructed and started with various call patterns.
+    """
+    factories = [
+        lambda: any_server_class(),
+        lambda: any_server_class(port=unused_tcp_port),
+        lambda: any_server_class(url='osc.udp://:%s' % unused_tcp_port),
+        lambda: any_server_class(url='osc.unix:///tmp/test-aiolo-%s.osc' % unused_tcp_port),
+        lambda: any_server_class(proto=PROTO_TCP, port=unused_tcp_port),
+        lambda: any_server_class(proto=PROTO_UDP, port=unused_tcp_port),
+        lambda: any_server_class(proto=PROTO_UNIX, port='/tmp/test-aiolo-%s.osc' % unused_tcp_port),
+        lambda: any_server_class(multicast=MultiCast('224.0.1.1', port=unused_tcp_port)),
+    ]
+    assert len(factories) == expected_factories_length
+
+    server = factories[index]()
+    server.start()
+    assert server.running
+    assert server.port is not None
+    server.stop()
 
 
-def ipv6_servers():
-    if '--ipv6' not in sys.argv:
-        return
-    for ip, iface in get_interfaces_by_ipv6().items():
-        server = aiolo.Server(url='osc.tcp://[%s]:10000' % ip)
+def test_server_init_proto_default_udp_port(any_server_class, unused_tcp_port):
+    server = any_server_class(proto=PROTO_DEFAULT, port=unused_tcp_port)
+    server.start()
+    assert server.running
+    assert server.proto == PROTO_UDP
+    assert server.port is not None
+    server.stop()
+
+
+def test_server_init_proto_default_unix_port(any_server_class, unused_tcp_port):
+    server = any_server_class(proto=PROTO_DEFAULT, port='/tmp/test-aiolo-%s.osc' % unused_tcp_port)
+    server.start()
+    assert server.running
+    assert server.proto == PROTO_UNIX
+    assert server.port is not None
+    server.stop()
+
+
+@pytest.mark.parametrize('index,expected_factories_length', zip(range(4), [4]*4))
+def test_server_start_error(index, expected_factories_length, any_server_class, unused_tcp_port):
+    factories = [
+        lambda: any_server_class(port='/foo'),
+        lambda: any_server_class(port=-1),
+        lambda: any_server_class(url='osc.foo://:%s' % unused_tcp_port),
+        lambda: any_server_class(url='osc.unix://'),
+    ]
+    assert len(factories) == expected_factories_length
+    server = factories[index]()
+    with pytest.raises(StartError):
         server.start()
-        yield server
-        server.stop()
+
+
+@pytest.mark.parametrize('index,expected_factories_length', zip(range(8), [8]*8))
+def test_server_init_error(index, expected_factories_length, any_server_class, unused_tcp_port):
+    factories = [
+        lambda: any_server_class(multicast='foo'),
+        lambda: any_server_class(proto=-1, port=unused_tcp_port),
+        lambda: any_server_class(proto='foo', port=unused_tcp_port),
+        lambda: any_server_class(url='osc.tcp://:%s' % unused_tcp_port, port='10'),
+        lambda: any_server_class(url='osc.tcp://:%s' % unused_tcp_port, proto=PROTO_UDP),
+        lambda: any_server_class(
+            url='osc.tcp://:%s' % unused_tcp_port, multicast=MultiCast('224.0.1.1', port=unused_tcp_port)),
+        lambda: any_server_class(proto=PROTO_TCP, multicast=MultiCast('224.0.1.1', port=unused_tcp_port)),
+        lambda: any_server_class(port='10', multicast=MultiCast('224.0.1.1', port=unused_tcp_port)),
+    ]
+    assert len(factories) == expected_factories_length
+    with pytest.raises((ValueError, TypeError)):
+        factories[index]()
 
 
 @pytest.mark.asyncio
-async def test_multiple_addresses_and_threaded_server(event_loop, threaded_server):
-    foo = threaded_server.route('/foo', str)
-    address1 = aiolo.Address(url=threaded_server.url)
-    address2 = aiolo.Address(url=threaded_server.url)
-    address3 = aiolo.Address(url=threaded_server.url)
+async def test_multiple_addresses(any_server):
+    """
+    Test that multiple clients can send data to a single server
+    """
+    foo = any_server.route('/foo', int)
+    addresses = [Address(port=any_server.port) for i in range(3)]
     task = create_task(subscribe(foo.sub(), 3))
-    event_loop.call_later(CANCEL_TIMEOUT, task.cancel)
-    address1.send(foo, 'address1')
-    await asyncio.sleep(0.1)
-    address2.send(foo, 'address2')
-    await asyncio.sleep(0.1)
-    address3.send(foo, 'address3')
+    for i, address in enumerate(addresses):
+        address.send(foo, i)
+        await asyncio.sleep(0.1)
     results = await task
-    assert results == [['address1'], ['address2'], ['address3']]
+    assert results == [[0], [1], [2]]
 
 
-def test_address_interface_ipv4(server, interfaces_by_ipv4):
-    assert any(interfaces_by_ipv4)
 
-    for iface in interfaces_by_ipv4.values():
-        address = aiolo.Address(url=server.url)
+@pytest.mark.parametrize('init', [
+    "Address(url='osc.tcp://%s:%s' % (ip, unused_tcp_port))",
+    "Address(url='osc.udp://%s:%s' % (ip, unused_tcp_port))",
+    "Address(url='osc.unix:///aiolo-test-%s.osc' % unused_tcp_port)",
+    "Address(proto=PROTO_TCP, host=ip, port=unused_tcp_port)",
+    "Address(proto=PROTO_UDP, host=ip, port=unused_tcp_port)",
+    "Address(proto=PROTO_UNIX, host=ip, port='/tmp/aiolo-test-%s.osc' % unused_tcp_port)",
+])
+def test_address_init(init, ip_interface, unused_tcp_port):
+    """
+    Test Address initialization and state.
+    """
+    ip, iface = ip_interface
+
+    address = eval(init)
+
+    print('ADDRESS.PROTO %s' % address.proto)
+
+    if iface is None or address.proto in (PROTO_UNIX, PROTO_DEFAULT):
+        with pytest.raises(ValueError):
+            address.interface = iface
+    else:
         address.interface = iface
         assert address.interface == iface
 
-    for ipv4, iface in interfaces_by_ipv4.items():
-        address = aiolo.Address(url=server.url)
+    address = eval(init)
+    if not ip or address.proto == PROTO_UNIX:
+        with pytest.raises(ValueError):
+            address.set_ip(ip)
+    else:
         assert address.interface is None
-        address.set_ip(ipv4)
+        address.set_ip(ip)
         assert address.interface == iface
 
-    address = aiolo.Address(url=server.url)
+    address = eval(init)
     with pytest.raises(ValueError):
         address.interface = 'foobar0'
     with pytest.raises(ValueError):
@@ -161,136 +244,190 @@ def test_address_interface_ipv4(server, interfaces_by_ipv4):
         address.set_ip('1.2.3.4')
 
 
-@pytest.mark.no_ipv6
 @pytest.mark.asyncio
-async def test_multicast(event_loop, multicast_cluster, multicast_address):
-    foo = aiolo.Route('/foo', str)
-    for s in multicast_cluster:
+async def test_multicast(any_server_class, unused_tcp_port):
+    """
+    Test multicast send/receive.
+    """
+    cluster = []
+    multicast = MultiCast('224.0.1.1', port=unused_tcp_port)
+    for i in range(3):
+        server = any_server_class(multicast=multicast)
+        server.start()
+        cluster.append(server)
+
+    address = MultiCastAddress(server=random.choice(cluster))
+    foo = Route('/foo', str)
+
+    for s in cluster:
         s.route(foo)
-    task = create_task(subscribe(foo.sub(), 3 * len(multicast_cluster)))
-    event_loop.call_later(CANCEL_TIMEOUT, task.cancel)
-    multicast_address.send(foo, 'foo')
-    multicast_address.send(foo, 'bar')
-    multicast_address.send(foo, 'baz')
+
+    task = create_task(
+        subscribe(foo.sub(), 3 * len(cluster)),
+        cancel_timeout=CANCEL_TIMEOUT * len(cluster))
+
+    for d in ['foo', 'bar', 'baz']:
+        address.send(foo, d)
+        await asyncio.sleep(1)
+
     results = await task
-    assert results == [['foo'], ['bar'], ['baz']] * len(multicast_cluster)
 
-
-@pytest.mark.ipv6
-@pytest.mark.parametrize('ipv6_server', ipv6_servers())
-def test_address_interface_ipv6(ipv6_server, interfaces_by_ipv6):
-    assert any(interfaces_by_ipv6)
-
-    for ipv6, iface in interfaces_by_ipv6.items():
-        address = aiolo.Address(url=ipv6_server.url)
-        assert address.interface is None
-        try:
-            address.set_ip(ipv6)
-        except Exception as exc:
-            aiolo.logger.exception(exc)
-        else:
-            print("SET THE IP")
-        assert address.interface == iface
+    assert results.count(['foo']) == len(cluster)
+    assert results.count(['bar']) == len(cluster)
+    assert results.count(['baz']) == len(cluster)
+    for s in cluster:
+        s.stop()
 
 
 @pytest.mark.asyncio
-async def test_multiple_servers(event_loop):
-    server1 = aiolo.Server(url='osc.tcp://:10002')
-    server2 = aiolo.Server(url='osc.tcp://:10003')
-    server3 = aiolo.Server(url='osc.tcp://:10004')
-    server1.start()
-    server2.start()
-    server3.start()
+async def test_multiple_servers(any_server_class, unused_tcp_port_factory):
+    """
+    Test that multiple servers can run okay in the same process.
+    """
+    servers = []
+    addresses = []
+    foo = Route('/foo', int)
+
+    for i in range(3):
+        server = any_server_class(url='osc.tcp://:%s' % unused_tcp_port_factory())
+        server.route(foo)
+        server.start()
+        servers.append(server)
+        address = Address(url=server.url)
+        addresses.append(address)
+
+    task = create_task(subscribe(foo.sub(), 3))
+    for i, address in enumerate(addresses):
+        address.send(foo, i)
+
     try:
-        foo = server1.route('/foo', str)
-        server2.route(foo)
-        server3.route(foo)
-        address1 = aiolo.Address(url=server1.url)
-        address2 = aiolo.Address(url=server2.url)
-        address3 = aiolo.Address(url=server3.url)
-        task = create_task(subscribe(foo.sub(), 3))
-        event_loop.call_later(CANCEL_TIMEOUT, task.cancel)
-        address1.send(foo, 'address1')
-        address2.send(foo, 'address2')
-        address3.send(foo, 'address3')
         results = await task
-        assert results == [['address1'], ['address2'], ['address3']]
+        assert set([r[0] for r in results]) == {0, 1, 2}
     finally:
-        server1.stop()
-        server2.stop()
-        server3.stop()
+        for server in servers:
+            server.stop()
 
 
-def valid_types_params():
-    for path, test_case in test_data.TYPE_TEST_DATA.items():
-        for argdef in test_case['argdefs']:
-            for publish, expected in test_case['valid']:
-                yield path, argdef, publish, expected
-                yield path, [argdef, argdef], [publish, publish], [[expected[0][0], expected[0][0]]]
-                yield path, aiolo.Argdef(argdef), [publish], expected
+def typespec_unpack_message_data():
+    for t in test_data.ARGDEF_TEST_DATA:
+        for typespec in t.typespecs:
+            for value, expected in t.valid:
+                if isinstance(typespec, int) and not isinstance(typespec, bool):
+                    # Test unicode typespec like 'h'
+                    yield t.path, chr(typespec), value, [expected]
+                yield t.path, typespec, value, [expected]
+                yield t.path, [typespec, typespec], [value, value], [expected, expected]
 
 
-@pytest.mark.parametrize('path, argdef, publish, expected', valid_types_params())
-@pytest.mark.asyncio
-async def test_valid_types(event_loop, server, address, path, argdef, publish, expected):
-    route = server.route(path, argdef)
-    task = create_task(subscribe(route.sub(), 1))
-    address.send(route, publish)
-    event_loop.call_later(CANCEL_TIMEOUT, task.cancel)
-    try:
-        result = await task
-    except asyncio.CancelledError:
-        pytest.fail('%r: argdef=%r, publish=%r, never received data' % (route, argdef, publish))
-    else:
-        msg = '%r: argdef=%r, publish=%r, %r != %r' % (route, argdef, publish, result, expected)
-        assert result == expected, msg
+@pytest.mark.parametrize('path, typespec, data, expected', typespec_unpack_message_data())
+def test_typespec_unpack_message(path, typespec, data, expected):
+    """
+    Test that types get parsed correctly
+    """
+    route = Route(path, typespec)
+    message = Message(route, data)
+    assert route.typespec.unpack_message(message) == expected
 
 
-def invalid_types_params():
-    for path, test_case in test_data.TYPE_TEST_DATA.items():
-        for argdef in test_case['argdefs']:
-            for invalid in test_case['invalid']:
-                yield path, argdef, [invalid]
-                yield path, aiolo.Argdef(argdef), [invalid]
+def typespec_unpack_message_type_error_data():
+    for typespec_test_data in test_data.ARGDEF_TEST_DATA:
+        for typespec in typespec_test_data.typespecs:
+            for value in typespec_test_data.type_error:
+                yield typespec_test_data.path, typespec, [value]
 
 
-@pytest.mark.parametrize('path, argdef, invalid', invalid_types_params())
-@pytest.mark.asyncio
-async def test_invalid_types(server, address, path, argdef, invalid):
-    route = server.route(path, [argdef])
+@pytest.mark.parametrize('path, typespec, data', typespec_unpack_message_type_error_data())
+def test_typespec_unpack_message_type_error(path, typespec, data):
+    """
+    Test that TypeError is raised for invalid data types
+    """
+    route = Route(path, typespec)
+    with pytest.raises(TypeError):
+        message = Message(route, data)
+        route.typespec.unpack_message(message)
+
+
+def typespec_unpack_message_overflow_error_data():
+    for t in test_data.ARGDEF_TEST_DATA:
+        for typespec in t.typespecs:
+            for value in t.overflow_error:
+                yield t.path, typespec, [value]
+
+
+@pytest.mark.parametrize('path, typespec, data', typespec_unpack_message_overflow_error_data())
+def test_typespec_unpack_message_overflow_error(path, typespec, data):
+    """
+    Test that OverflowError is raised for invalid data types
+    """
+    route = Route(path, typespec)
+    with pytest.raises(OverflowError):
+        message = Message(route, data)
+        route.typespec.unpack_message(message)
+
+
+def typespec_unpack_message_value_error_data():
+    for t in test_data.ARGDEF_TEST_DATA:
+        for typespec in t.typespecs:
+            for value in t.value_error:
+                yield t.path, typespec, [value]
+
+
+@pytest.mark.parametrize('path, typespec, data', typespec_unpack_message_value_error_data())
+def test_typespec_unpack_message_value_error(path, typespec, data):
+    """
+    Test that ValueError is raised for invalid data values
+    """
+    route = Route(path, typespec)
     with pytest.raises(ValueError):
-        address.send(route, invalid)
+        message = Message(route, data)
+        route.typespec.unpack_message(message)
 
 
-@pytest.mark.parametrize('argdef,value', [
-    (float, 42.0),
-    (int, 42),
-    (True, True),
-    (False, False),
-    (None, None),
+@pytest.mark.parametrize('value, typespec', [
+    [42, INT64],
+    [42.0, DOUBLE],
+    ['foo', STRING],
+    [b'foo', BLOB],
+    [array.array('b', b'foo'), BLOB],
+    [True, TRUE],
+    [False, FALSE],
+    [None, NIL],
+    [Midi(1, 2, 3, 4), MIDI],
+    [now(), TIMETAG],
+    [TimeTag(), TIMETAG],
+    [INFINITY, INFINITUM],
 ])
-def test_guess_argtypes(argdef, value):
-    assert aiolo.guess_argtypes([value]) == bytes(aiolo.Argdef([argdef]))
+def test_typespec_guess(value, typespec):
+    assert TypeSpec.guess([value]) == TypeSpec(typespec)
+
+
+@pytest.mark.parametrize('value', [
+    {},
+    [],
+])
+def test_typespec_guess_type_error(value):
+    with pytest.raises(TypeError):
+        TypeSpec.guess([value])
 
 
 @pytest.mark.asyncio
-async def test_multiple_subs(event_loop, server, address):
-    foo = server.route('/foo', 's')
+async def test_multiple_subs(any_server):
+    address = Address(url=any_server.url)
+    foo = any_server.route('/foo', 's')
     tasks = asyncio.gather(
         create_task(subscribe(foo.sub(), 1)),
         create_task(subscribe(foo.sub(), 1)),
     )
-    event_loop.call_later(CANCEL_TIMEOUT, tasks.cancel)
     address.send(foo, 'bar')
     results = list(await tasks)
     assert results == [[['bar']], [['bar']]]
 
 
 @pytest.mark.asyncio
-async def test_unroute(event_loop, server, address):
+async def test_unroute(server):
+    address = Address(url=server.url)
     foo = server.route('/foo', 's')
     task = create_task(subscribe(foo.sub(), 1))
-    event_loop.call_later(CANCEL_TIMEOUT, task.cancel)
     server.unroute(foo)
     address.send(foo, 'bar')
     with pytest.raises(asyncio.CancelledError):
@@ -298,7 +435,8 @@ async def test_unroute(event_loop, server, address):
 
 
 @pytest.mark.asyncio
-async def test_bundle(event_loop, server, address):
+async def test_bundle(server):
+    address = Address(url=server.url)
     routes = [
         server.route(path, 's')
         for path in ('/foo', '/bar', '/baz')
@@ -307,9 +445,8 @@ async def test_bundle(event_loop, server, address):
         create_task(subscribe(route.sub(), 1))
         for route in routes
     ])
-    event_loop.call_later(CANCEL_TIMEOUT, tasks.cancel)
     address.bundle([
-        aiolo.Message(route, str(route.path))
+        Message(route, route.path.as_str)
         for route in routes
     ])
     results = list(await tasks)
@@ -317,138 +454,315 @@ async def test_bundle(event_loop, server, address):
 
 
 @pytest.mark.asyncio
-async def test_bundle_delayed(event_loop):
-    server = aiolo.Server(url='osc.tcp://:10000')
-    server.start()
-    try:
-        address = aiolo.Address(url=server.url)
-        foo = server.route('/foo', 's')
-        task = create_task(subscribe(foo.sub(), 1))
-        event_loop.call_later(2, task.cancel)
-        address.bundle([
-            aiolo.Message(foo, 'now'),
-            aiolo.Bundle(
-                [aiolo.Message(foo, 'later')],
-                timetag=datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(seconds=1))
-        ])
-        results = list(await task)
-        assert results == [['now']]
-        assert server.events_pending
-        assert 0 < server.next_event_delay < 1
-        task = create_task(subscribe(foo.sub(), 1))
-        results = list(await task)
-        assert results == [['later']]
-    finally:
-        server.stop()
+async def test_bundle_delayed(server):
+    address = Address(url=server.url)
+    foo = server.route('/foo', 's')
+    task = create_task(subscribe(foo.sub(), 1), cancel_timeout=2)
+    address.bundle([
+        Message(foo, 'now'),
+        Bundle(
+            [Message(foo, 'later')],
+            timetag=now() + datetime.timedelta(seconds=1))
+    ])
+    results = list(await task)
+    assert results == [['now']]
+    assert server.events_pending
+    assert 0 < server.next_event_delay < 1
+    task = create_task(subscribe(foo.sub(), 1))
+    results = list(await task)
+    assert results == [['later']]
+
+
+def test_bundle_and_message_ops():
+    foo = Route('/foo', 's')
+    bar = Route('/bar', 's')
+    baz = Route('/baz', 's')
+    spaz = Route('/spaz', 's')
+    bundle = Bundle()
+    assert bundle == Bundle()
+
+    with pytest.raises(IndexError):
+        assert bundle[0]
+
+    message = Message(foo, 'foo')
+    assert message == Message(foo, 'foo')
+    assert bundle != Bundle(message)
+
+    # Test hashable
+    items = {bundle, message}
+    assert len(items) == 2
+    assert bundle in items
+    assert message in items
+    items.add(Bundle())
+    assert len(items) == 2
+    items.add(Message(foo, 'foo'))
+    assert len(items) == 2
+    items.add(Bundle(timetag=now()))
+    assert len(items) == 3
+    items.add(Message(bar, 'bar'))
+    assert len(items) == 4
+
+    # Test adding a message to a bundle via __iadd__
+    orig = bundle
+    bundle += Message(foo, 'foo')
+    assert bundle[0] == Message(foo, 'foo')
+    assert bundle is orig
+
+    # Test adding several messages at once
+    bundle += [Message(bar, 'bar'), Message(baz, 'baz')]
+    assert bundle[1] == Message(bar, 'bar')
+    assert bundle[2] == Message(baz, 'baz')
+
+    # Test adding a nested bundle
+    bundle += Bundle(Message(spaz, 'spaz'))
+    assert bundle[3] == Bundle(Message(spaz, 'spaz'))
+
+    # Test __add__ instead of __iadd__
+    other = Message(foo, 'foo') + Message(bar, 'bar') + Message(baz, 'baz')
+    assert bundle != other
+    assert bundle != other + Message(spaz, 'spaz')
+    assert bundle == other + Bundle(Message(spaz, 'spaz'))
+
+    # test sorting bundles
+    timetag = TimeTag(now())
+    bundles = (
+        Bundle(timetag=timetag + 2),
+        Bundle(timetag=timetag + 1),
+        Bundle(timetag=timetag + 4),
+        Bundle(timetag=timetag + 3))
+    bundle2, bundle1, bundle4, bundle3 = bundles
+
+    assert sorted(bundles) == [bundle1, bundle2, bundle3, bundle4]
+#
+#
+# @pytest.mark.parametrize('typespec, data', [
+#
+# ])
+# def test_message_init_invalid(typespec, data):
+#     foo = Route('/foo', typespec)
+#     with pytest.raises(TypeError):
+#         Message(foo, *data)
+#     with pytest.raises(TypeError):
+#         Message(foo, 1.0)
+#     with pytest.raises(TypeError):
+#         Message(foo, Midi(1, 2, 3, 4))
+#     with pytest.raises(TypeError):
+#         Message(foo, TT_IMMEDIATE)
+
+
+def test_message_arglength_mismatch():
+    foo = Route('/foo', 's')
+    with pytest.raises(ValueError, match=r'Argument length does not match typespec .*'):
+        Message(foo, 'foo', 'bar')
 
 
 @pytest.mark.asyncio
-async def test_bundle_join(event_loop, server, address):
+async def test_route_pattern(server):
+    address = Address(url=server.url)
     foo = server.route('/foo', 's')
     bar = server.route('/bar', 's')
-    bundle = aiolo.Bundle([aiolo.Message(foo, 'foo')])
-    bundle &= aiolo.Bundle([aiolo.Message(bar, 'bar')])
     tasks = asyncio.gather(
         create_task(subscribe(foo.sub(), 1)),
         create_task(subscribe(bar.sub(), 1)),
     )
-    address.bundle(bundle)
-    event_loop.call_later(CANCEL_TIMEOUT, tasks.cancel)
-    results = list(await tasks)
-    assert results == [[['foo']], [['bar']]]
-
-
-@pytest.mark.asyncio
-async def test_route_pattern(event_loop, server, address):
-    foo = server.route('/foo', 's')
-    bar = server.route('/bar', 's')
-    tasks = asyncio.gather(
-        create_task(subscribe(foo.sub(), 1)),
-        create_task(subscribe(bar.sub(), 1)),
-    )
-    event_loop.call_later(CANCEL_TIMEOUT, tasks.cancel)
-    wildcard = aiolo.Route('/[a-z]*', 's')
+    wildcard = Route('/[a-z]*', 's')
     address.send(wildcard, ['baz'])
     results = list(await tasks)
     assert results == [[['baz']], [['baz']]]
 
 
-@pytest.mark.asyncio
-async def test_route_join(event_loop, server, address):
-    foo = server.route('/foo', 's')
-    bar = server.route('/bar', 's')
-    baz = server.route('/baz', 's')
-    spaz = server.route('/spaz', 's')
-    tasks = asyncio.gather(
-        create_task(subscribe(foo.sub(), 1)),
-        create_task(subscribe(bar.sub(), 1)),
-        create_task(subscribe(baz.sub(), 1)),
-        create_task(subscribe(spaz.sub(), 1)),
-    )
-    event_loop.call_later(CANCEL_TIMEOUT, tasks.cancel)
-    route = foo & bar
-    assert route.is_pattern
-    route &= baz
-    route &= spaz
-    assert route.is_pattern
-    address.send(route, 'hello')
-    results = list(await tasks)
-    assert results == [[['hello']], [['hello']], [['hello']], [['hello']]]
+PATTERN_TESTS = [
+    # These are taken from liblo's testlo.c
+
+    # Test {} pattern
+    ('/x1y', '/x{1,10,11}y', True),
+    ('/x10y', '/x{1,10,11}y', True),
+    ('/x11y', '/x{1,10,11}y', True),
+    ('/x2y', '/x{1,10,11}y', False),
+    ('/x12y', '/x{1,10,11}y', False),
+    ('/x12y', '/x{11}y', False),
+    ('/x12y', '/x{12}y', True),
+
+    # Test [] pattern
+    ('/x1y', '/x[321]y', True),
+    ('/x4y', '/x[321]y', False),
+    ('/x2y', '/x[1-3]y', True),
+    ('/x3y', '/x[3-2]y', True),
+    ('/xzy', '/x[3-2z]y', True),
+    ('/x1y', '/x[!a-z]y', True),
+    ('/x1y', '/x[a-z]y', False),
+    ('/xby', '/x[a-z]y', True),
+    # spec 1.0: "A - at the end of the string has no special meaning"
+    ('/x-y', '/x[23-]y', True),
+    # spec 1.0: "An ! anywhere besides the first character after the
+    # open bracket has no special meaning"
+    ('/x!y', '/x[a-z!]y', True),
+
+    # Test * pattern
+    ('/x123y', '/x*y', True),
+    ('/x123y', '/x*z', False),
+
+    # Test ? pattern
+    ('/x1y', '/x?y', True),
+    ('/x?y', '/x?y', True),
+
+    # Test ?, *, and [] with multiple /
+    ('/xy/z', '/*/?', True),
+    ('/xy/z', '/?/*', False),
+    ('/w/xy/z', '/[xyzw]/*/?', True),
+
+    # Test '//' from spec 1.1
+    ('/z', '//z', True),
+    ('/xy/z', '//z', True),
+    ('/xy/z/w/u', '///w/u', True),
+    ('/xy/z/w/u', '///z/w', False),
+]
 
 
-def test_cannot_serve_pattern(server):
+# Pattern matching of {} does not work correctly in <0.31, see
+# https://github.com/radarsat1/liblo/commit/e1532a8cbbbc98e066deda3d3c27de84dddd8b10
+@pytest.mark.skipif(
+    LO_VERSION < "0.31",
+    reason="liblo < 0.31 has a bug in lo_pattern match that prevents route joins from properly working")
+def test_route_ops_lo_0_31():
+    for string, pattern, expect_match in PATTERN_TESTS:
+        string_path = Path(string)
+        assert not string_path.is_pattern
+        pattern_path = Path(pattern)
+        assert pattern_path.is_pattern
+        with pytest.raises(ValueError):
+            string_path | pattern_path
+        if expect_match:
+            assert string_path in pattern_path
+        else:
+            assert string_path not in pattern_path
+
+
+    # foo = Route('/foo')
+    # bar = Route('/bar')
+    # baz = Route('/baz')
+    # spaz = Route('/spaz')
+    # xxyyxx = Route('/xxyyxx')
+    # route = foo | bar
+    # assert route.is_pattern
+    # assert route.is_simple_pattern
+    # assert foo in route
+    # assert bar in route
+    # assert baz not in route
+    # assert {foo, bar, baz, spaz} not in route
+    # assert {baz, spaz} not in route
+    # route |= baz
+    # route |= spaz
+    # assert baz in route
+    # assert spaz in route
+    # assert {foo, bar, baz, spaz} in route
+    #
+    # with pytest.raises(ValueError):
+    #     # Can't pattern match against non-simple pattern
+    #     assert Route('/f*o') in route
+    #
+    # with pytest.raises(ValueError):
+    #     # Can't pattern match against non-simple pattern
+    #     assert route in Route('/f*o')
+    #
+    # assert route in route
+    #
+    # assert route == foo | bar | baz | spaz
+    # assert route != foo
+    # assert route.is_pattern
+    # assert route.is_simple_pattern
+    #
+    # # add a pattern that should match /xxyyxx
+    # # DOES THIS WORK???????
+    # xxyyxx_wildcard = Route('/*yy*')
+    # route |= xxyyxx_wildcard
+    #
+    # assert xxyyxx in xxyyxx_wildcard
+    # assert xxyyxx in route
+    #
+    # with pytest.raises(ValueError):
+    #     route |= Route('/blob-arg', 'b')
+    #
+    # with pytest.raises(ValueError):
+    #     route |= Route('/no-args', NO_ARGS)
+
+
+
+@pytest.mark.parametrize('char', '#{}[]!?*,-^\\'.split())
+def test_cannot_serve_pattern(server, char):
     with pytest.raises(ValueError):
-        server.route('/[a-z]*', 's')
+        server.route(char, 's')
     with pytest.raises(ValueError):
-        server.route(aiolo.Route('/[a-z]*', 's'))
+        route = Route(char, 's')
+        assert route.is_pattern
+        server.route(route)
 
 
 @pytest.mark.asyncio
-async def test_any_path(event_loop, server, address):
-    any_path = server.route(aiolo.ANY_PATH, 's')
+async def test_route_any_path(server):
+    address = Address(url=server.url)
+    any_path = server.route(ANY_PATH, 's')
     task = create_task(subscribe(any_path.sub(), 1))
-    event_loop.call_later(CANCEL_TIMEOUT, task.cancel)
     with pytest.raises(ValueError):
         address.send(any_path, ['foo'])
-    address.send(aiolo.Route('/foo', 's'), ['foo'])
+    address.send(Route('/foo', 's'), ['foo'])
     results = list(await task)
     assert results == [['foo']]
 
 
 @pytest.mark.asyncio
-async def test_no_args(event_loop, server, address):
-    foo = server.route('/foo', aiolo.NO_ARGS)
+async def test_route_no_args(server):
+    address = Address(url=server.url)
+    foo = server.route('/foo', NO_ARGS)
     task = create_task(subscribe(foo.sub(), 1))
-    event_loop.call_later(CANCEL_TIMEOUT, task.cancel)
     address.send(foo)
     results = list(await task)
     assert results == [[]]
 
 
 @pytest.mark.asyncio
-async def test_any_args(event_loop, server, address):
-    foo = server.route('/foo', aiolo.ANY_ARGS)
+async def test_route_any_args(server):
+    address = Address(url=server.url)
+    foo = server.route('/foo', ANY_ARGS)
     task = create_task(subscribe(foo.sub(), 1))
-    event_loop.call_later(CANCEL_TIMEOUT, task.cancel)
     address.send(foo, 'foo')
     results = list(await task)
     assert results == [['foo']]
 
 
 @pytest.mark.asyncio
-async def test_sub_join(event_loop, server, address):
+async def test_sub_join(server):
+    address = Address(url=server.url)
     foo = server.route('/foo', 's')
     bar = server.route('/bar', 's')
     baz = server.route('/baz', 's')
-    sub = foo.sub() | bar.sub() | baz.sub()
+    foo_sub = foo.sub()
+    bar_sub = bar.sub()
+    baz_sub = baz.sub()
+    sub = foo_sub | bar_sub
+    assert foo in sub
+    assert foo_sub in sub
+    assert baz not in sub
+    sub |= baz_sub
+    sub |= sub  # no-op
+    assert len(sub) == 3
+    assert sub == foo_sub | bar_sub | baz_sub
+    assert sub == foo.sub() | bar.sub() | baz.sub()
+    assert sub != foo.sub() | bar.sub()
+    assert sub not in foo.sub() | bar.sub()
+    assert sub in foo.sub() | bar.sub() | baz.sub()
+    assert (foo.sub() | bar.sub()) in sub
+
     task = create_task(subscribe(sub, 6))
-    event_loop.call_later(CANCEL_TIMEOUT, task.cancel)
-    address.send(foo, 'foo1')
-    address.send(foo, 'foo2')
-    address.send(bar, 'bar1')
-    address.send(bar, 'bar2')
-    address.send(baz, 'baz1')
-    address.send(baz, 'baz2')
+
+    for route, data in {
+        foo: ['foo1', 'foo2'],
+        bar: ['bar1', 'bar2'],
+        baz: ['baz1', 'baz2']
+    }.items():
+        for d in data:
+            address.send(route, d)
+
     results = await task
     assert results == {
         foo: [['foo1'], ['foo2']],
@@ -457,59 +771,117 @@ async def test_sub_join(event_loop, server, address):
     }
 
 
+def test_typespec_ops():
+    typespec = TypeSpec(str)
+    assert typespec == 's'
+    assert typespec == (str, )
+    typespec = TypeSpec(str) + TypeSpec(int)
+    assert typespec == 'sh'
+    assert typespec == (str, int)
+    typespec += 'h'
+    assert typespec == 'shh'
+    assert typespec == (str, int, int)
+    assert typespec == TypeSpec('shh')
+    with pytest.raises(ValueError):
+        typespec += ANY_ARGS
+    with pytest.raises(ValueError):
+        typespec += NO_ARGS
+    assert ANY_ARGS + ANY_ARGS == ANY_ARGS
+    assert NO_ARGS + NO_ARGS == NO_ARGS
+    assert NO_ARGS == NO_ARGS
+    assert NO_ARGS != ANY_ARGS
+    assert ANY_ARGS != NO_ARGS
+    assert typespec in ANY_ARGS
+    assert typespec not in NO_ARGS
+    assert NO_ARGS in NO_ARGS
+    assert NO_ARGS not in typespec
+    assert NO_ARGS in ANY_ARGS
+    assert ANY_ARGS not in NO_ARGS
+    assert ANY_ARGS in ANY_ARGS
+
+
+def test_path_ops():
+    foo = Path('/foo')
+    assert not foo.is_pattern
+    assert foo in foo
+    assert foo in ANY_PATH
+    assert ANY_PATH not in foo
+    assert ANY_PATH | ANY_PATH == ANY_PATH
+    with pytest.raises(ValueError):
+        foo |= ANY_PATH
+    with pytest.raises(ValueError):
+        ANY_PATH |= foo
+    bar = Path('/bar')
+    assert bar not in foo
+    foo_bar = foo | bar
+    assert foo_bar.is_pattern
+    assert foo_bar.as_str == '{/foo,/bar}'
+    assert foo_bar == foo | bar
+    star = Path('/*')
+    foo_bar_star = foo_bar | star
+    assert foo_bar_star == '{{/foo,/bar},/*}'
+    assert foo in foo_bar_star
+    assert bar in foo_bar_star
+    assert star in foo_bar_star
+    with pytest.raises(ValueError):
+        assert foo_bar in foo_bar_star
+
+
+
+
 def test_timetag():
     # assert that constants are sane
-    assert aiolo.TT_IMMEDIATE == (0, 1)
-    assert aiolo.TimeTag(aiolo.EPOCH_UTC) == (aiolo.JAN_1970, 0)
+    assert TT_IMMEDIATE == (0, 1)
+    assert TimeTag(EPOCH_UTC) == (JAN_1970, 0)
 
     # Test TT_IMMEDIATE is frozen
-    tt = aiolo.TT_IMMEDIATE
-    assert tt is aiolo.TT_IMMEDIATE
+    tt = TT_IMMEDIATE
+    assert tt is TT_IMMEDIATE
     tt += 1
     # FrozenTimeTag does not implement __iadd__ so a new instance is created for the name tt
-    assert tt is not aiolo.TT_IMMEDIATE
+    assert tt is not TT_IMMEDIATE
     assert tt == (1, 1)
-    assert aiolo.TT_IMMEDIATE == (0, 1)
+    assert TT_IMMEDIATE == (0, 1)
 
     # Test operations
-    tt = aiolo.TimeTag((0, 1))
+    tt = TimeTag((0, 1))
     orig = tt
     tt = tt + 3
     assert tt == (3, 1)
     assert tt is not orig
     tt = tt - 2.1
-    assert tt == (0, .9 * aiolo.FRAC_PER_SEC)
+    assert tt == (0, .9 * FRAC_PER_SEC)
     assert tt is not orig
 
     # Test inplace operations
-    tt = aiolo.TimeTag((0, 1))
+    tt = TimeTag((0, 1))
     orig = tt
     tt += 3
     assert tt == (3, 1)
     assert tt is orig
     tt -= 2.1
-    assert tt == (0, .9 * aiolo.FRAC_PER_SEC)
+    assert tt == (0, .9 * FRAC_PER_SEC)
     assert tt is orig
 
     for dt in (
-        aiolo.EPOCH_UTC,
-        datetime.datetime(1905, 5, 5, 5, 5, 5, 5, datetime.timezone.utc),
-        datetime.datetime(2026, 6, 6, 6, 6, 6, 6, datetime.timezone.utc),
+            EPOCH_UTC,
+            datetime.datetime(1905, 5, 5, 5, 5, 5, 5, datetime.timezone.utc),
+            datetime.datetime(2026, 6, 6, 6, 6, 6, 6, datetime.timezone.utc),
     ):
-        tt = aiolo.TimeTag(dt)
+        tt = TimeTag(dt)
         assert tt == dt and tt <= dt <= tt
         assert tt.dt == dt and tt <= dt <= tt
-        assert tt.osc_timestamp == aiolo.unix_timestamp_to_osc_timestamp(dt.timestamp())
+        assert tt.osc_timestamp == unix_timestamp_to_osc_timestamp(dt.timestamp())
         assert int(dt.timestamp()) == int(tt.unix_timestamp)
         assert pytest.approx(float(dt.timestamp()), rel=1e-6) == tt.unix_timestamp
         assert tuple(tt) == (tt.sec, tt.frac)
 
         for other in (
-            aiolo.TimeTag(tt),
-            dt,
-            int(tt),
-            float(tt),
-            tuple(tt)
+                TimeTag(tt),
+                dt,
+                int(tt),
+                float(tt),
+                tuple(tt)
         ):
             # test comparison operators
             if isinstance(other, int):
@@ -533,8 +905,8 @@ def test_timetag():
         assert tt + 0.1 != tuple(tt)
 
 
-async def subscribe(sub: Union[aiolo.Sub, aiolo.Subs], count: int):
-    if isinstance(sub, aiolo.Subs):
+async def subscribe(sub: Union[Sub, Subs], count: int):
+    if isinstance(sub, Subs):
         results = {}
         async for route, item in sub:
             results.setdefault(route, []).append(item)
@@ -550,3 +922,7 @@ async def subscribe(sub: Union[aiolo.Sub, aiolo.Subs], count: int):
                 await sub.unsub()
                 break
         return items
+
+
+if __name__ == '__main__':
+    pytest.main()

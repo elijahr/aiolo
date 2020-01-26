@@ -2,13 +2,13 @@
 
 import datetime
 import operator
-from typing import Tuple, Callable, Any, Union
+from typing import Tuple, Callable, Union
 
-from libc.stdint cimport uint32_t, uint64_t
+from libc.stdint cimport uint32_t
 from libc.stdlib cimport malloc, free
 
 
-from . import typedefs
+from . import types
 from . cimport lo
 
 
@@ -40,12 +40,12 @@ EPOCH_OSC = datetime.datetime(1900, 1, 1, 0, 0, 0, 0, datetime.timezone.utc)
 
 
 cdef class FrozenTimeTag:
-    def __cinit__(self, timetag: typedefs.TimeTagTypes = None):
+    def __cinit__(self, timetag: types.TimeTagTypes = None):
         cdef lo.lo_timetag lo_timetag
         self.lo_timetag_p = timetag_to_lo_timetag_ptr(timetag)
         self.lo_timetag = self.lo_timetag_p[0]
 
-    def __init__(self, timestamp: typedefs.TimeTagTypes = None):
+    def __init__(self, timestamp: types.TimeTagTypes = None):
         pass
 
     def __dealloc__(self):
@@ -77,10 +77,10 @@ cdef class FrozenTimeTag:
         elif isinstance(other, datetime.timedelta):
             delta = other.total_seconds()
         else:
-            raise ValueError('Invalid value for %r operation %s: %r' % (self.__class__.__name__, op.__name__, other))
+            raise TypeError('Invalid value for %r operation %s: %r' % (self.__class__.__name__, op.__name__, other))
         return osc_timestamp_to_timetag_parts(op(self.osc_timestamp, delta))
 
-    def compare(self, other: typedefs.TimeTagTypes, op: Callable) -> bool:
+    def compare(self, other: types.TimeTagTypes, op: Callable) -> bool:
         cdef double osc_timestamp
         if isinstance(other, tuple):
             osc_timestamp = timetag_parts_to_osc_timestamp(other[0], other[1])
@@ -93,7 +93,7 @@ cdef class FrozenTimeTag:
                 raise ValueError('Cannot compare %r with naive datetime %r' % (self, other))
             osc_timestamp = unix_timestamp_to_osc_timestamp(other.timestamp())
         else:
-            raise ValueError('Invalid value for %r compare operation: %r' % (self.__class__.__name__, other))
+            raise TypeError('Invalid value for %r compare operation: %r' % (self.__class__.__name__, other))
         return op(osc_timestamp_to_timetag_parts(self.osc_timestamp), osc_timestamp_to_timetag_parts(osc_timestamp))
 
     def __not__(self):
@@ -102,22 +102,22 @@ cdef class FrozenTimeTag:
     def __abs__(self):
         return operator.abs(self.osc_timestamp)
 
-    def __lt__(self, other: typedefs.TimeTagTypes) -> bool:
+    def __lt__(self, other: types.TimeTagTypes) -> bool:
         return (<FrozenTimeTag>self).compare(other, operator.lt)
 
-    def __le__(self, other: typedefs.TimeTagTypes) -> bool:
+    def __le__(self, other: types.TimeTagTypes) -> bool:
         return (<FrozenTimeTag>self).compare(other, operator.le)
 
-    def __eq__(self, other: typedefs.TimeTagTypes) -> bool:
+    def __eq__(self, other: types.TimeTagTypes) -> bool:
         return (<FrozenTimeTag>self).compare(other, operator.eq)
 
-    def __ne__(self, other: typedefs.TimeTagTypes) -> bool:
+    def __ne__(self, other: types.TimeTagTypes) -> bool:
         return (<FrozenTimeTag>self).compare(other, operator.ne)
 
-    def __gt__(self, other: typedefs.TimeTagTypes) -> bool:
+    def __gt__(self, other: types.TimeTagTypes) -> bool:
         return (<FrozenTimeTag>self).compare(other, operator.gt)
 
-    def __ge__(self, other: typedefs.TimeTagTypes) -> bool:
+    def __ge__(self, other: types.TimeTagTypes) -> bool:
         return (<FrozenTimeTag>self).compare(other, operator.ge)
 
     def __add__(self, other: Union[int, float, datetime.timedelta]) -> TimeTag:
@@ -213,7 +213,7 @@ cdef lo.lo_timetag * timetag_to_lo_timetag_ptr(object timetag) except NULL:
         parts = unix_timestamp_to_timetag_parts(unix_timestamp)
 
     else:
-        raise ValueError('Invalid timetag value %s' % repr(timetag))
+        raise TypeError('Invalid timetag value %s' % repr(timetag))
 
     sec, frac = parts[0], parts[1]
     return timetag_parts_to_lo_timetag_ptr(sec, frac)
@@ -230,6 +230,12 @@ cdef lo.lo_timetag * timetag_parts_to_lo_timetag_ptr(uint32_t sec, uint32_t frac
 
 cdef lo.lo_timetag * copy_lo_timetag_ptr(lo.lo_timetag * orig) except NULL:
     return timetag_parts_to_lo_timetag_ptr(orig.sec, orig.frac)
+
+
+cdef FrozenTimeTag lo_timetag_to_timetag(lo.lo_timetag lo_timetag):
+    if lo_timetag.sec == 0 and lo_timetag.frac == 1:
+        return TT_IMMEDIATE
+    return TimeTag(lo_timetag.sec, lo_timetag.frac)
 
 
 cdef double lo_timetag_to_unix_timestamp(lo.lo_timetag lo_timetag):

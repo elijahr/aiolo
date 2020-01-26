@@ -1,11 +1,16 @@
 # cython: language_level=3
 
-from typing import Iterable
+from typing import Iterable, Union, Iterator, Any
+
+from cpython cimport array
+import array
 
 from .timetags import TT_IMMEDIATE
-from . import typedefs
+from . import types
 from . cimport lo, messages, paths, timetags
 
+
+cdef array.array BUNDLE_ARRAY_TEMPLATE = array.array('B')
 
 __all__ = ['Bundle']
 
@@ -13,8 +18,8 @@ __all__ = ['Bundle']
 cdef class Bundle:
     def __cinit__(
         self,
-        msgs: Iterable[typedefs.BundleTypes, None] = None,
-        timetag: typedefs.TimeTagTypes = None
+        msgs: Iterable[types.BundleTypes, None] = None,
+        timetag: types.TimeTagTypes = None
     ):
         if timetag is None:
             # optimization, re-use TT_IMMEDIATE rather than construct a new one
@@ -25,43 +30,99 @@ cdef class Bundle:
         self.lo_bundle = lo.lo_bundle_new((<timetags.TimeTag>timetag).lo_timetag)
         if self.lo_bundle is NULL:
             raise MemoryError
-        self.msgs = []
-        if msgs:
-            for msg in msgs:
-                self.add(msg)
+        if isinstance(msgs, messages.Message):
+            self.msgs = [msgs]
+        else:
+            self.msgs = []
+            if msgs:
+                for msg in msgs:
+                    self.add(msg)
 
     def __init__(
         self,
-        msgs: Iterable[typedefs.BundleTypes, None] = None,
-        timetag: typedefs.TimeTagTypes = None
+        msgs: Iterable[types.BundleTypes, None] = None,
+        timetag: types.TimeTagTypes = None
     ):
         pass
 
-    def __dealloc__(self):
+    def __dealloc__(Bundle self):
         lo.lo_bundle_free(self.lo_bundle)
 
-    def __repr__(self):
+    def __repr__(Bundle self):
         return 'Bundle(%r, %r)' % (self.msgs, self.timetag)
 
-    def __iand__(self, other: typedefs.BundleTypes):
+    def __hash__(self):
+        return hash(b'Bundle:' + bytes(self.raw()))
+
+    def __eq__(Bundle self, other: Any) -> bool:
+        if not isinstance(other, Bundle):
+            return False
+        return self.timetag == (<Bundle>other).timetag \
+               and self.msgs == (<Bundle>other).msgs
+
+    def __lt__(Bundle self, other: Any) -> bool:
+        if not isinstance(other, Bundle):
+            return False
+        return self.timetag < (<Bundle>other).timetag
+
+    def __gt__(Bundle self, other: Any) -> bool:
+        if not isinstance(other, Bundle):
+            return False
+        return self.timetag > (<Bundle>other).timetag
+
+    def __le__(Bundle self, other: Any) -> bool:
+        if not isinstance(other, Bundle):
+            return False
+        return self.timetag <= (<Bundle>other).timetag
+
+    def __ge__(Bundle self, other: Any) -> bool:
+        if not isinstance(other, Bundle):
+            return False
+        return self.timetag >= (<Bundle>other).timetag
+
+    def __add__(Bundle self, other: types.BundleTypes):
+        return Bundle((<Bundle>self).msgs, self.timetag).add(other)
+
+    def __iadd__(Bundle self, other: types.BundleTypes):
         return self.add(other)
 
-    def __iadd__(self, other: typedefs.BundleTypes):
-        return self.add(other)
+    def __len__(Bundle self) -> int:
+        return len((<Bundle>self).msgs)
 
-    cpdef object add(Bundle self, msg: typedefs.BundleTypes):
+    def __iter__(Bundle self) -> Iterator:
+        return iter((<Bundle>self).msgs)
+
+    def __getitem__(Bundle self, item) -> Union[Bundle, messages.Message]:
+        return (<Bundle>self).msgs[item]
+
+    def raw(Bundle self) -> array.array:
+        cdef:
+            size_t length
+            array.array arr
+        length = lo.lo_bundle_length(self.lo_bundle)
+        arr = array.clone(BUNDLE_ARRAY_TEMPLATE, length, zero=True)
+        lo.lo_bundle_serialise(self.lo_bundle, <void*>arr.data.as_voidptr, &length)
+        return arr
+
+    cpdef object add(Bundle self, msg: types.BundleTypes):
         if isinstance(msg, messages.Message):
             self.add_message(msg)
         elif isinstance(msg, Bundle):
             self.add_bundle(msg)
         else:
-            raise ValueError('Cannot add %s to bundle' % repr(msg))
+            try:
+                for item in msg:
+                    self.add(item)
+            except TypeError:
+                raise TypeError('Cannot add %s to bundle' % repr(msg))
         return self
 
     cpdef object add_message(Bundle self, messages.Message message):
+        path = (<paths.Path>message.route.path).as_bytes
+        cdef char * p = path
         if lo.lo_bundle_add_message(
             self.lo_bundle,
-            (<paths.Path>message.route.path).charp(),
+            p,
             (<messages.Message>message).lo_message
         ) != 0:
             raise MemoryError

@@ -82,7 +82,7 @@ class Machine:
     def __init__(self):
         self.loop = asyncio.get_event_loop()
         asyncio.set_event_loop(self.loop)
-        self.server = aiolo.Server(url=SERVER_URL)
+        self.server = aiolo.AioServer(url=SERVER_URL)
         self.server.route(EXIT)
         self.subs = {}
         for route in DRUM_ROUTES:

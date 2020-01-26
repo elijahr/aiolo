@@ -23,7 +23,7 @@ cdef class Midi:
         pass
 
     def __repr__(self):
-        return 'Midi(%r, %r, %r, %r)' % (self[0], self[1], self[2], self[3])
+        return 'Midi(%r, %r, %r, %r)' % (self.data[0], self.data[1], self.data[2], self.data[3])
 
     def __len__(self):
         return 4
@@ -31,17 +31,11 @@ cdef class Midi:
     def __iter__(Midi self):
         return iter(self.data[:])
 
-    def __eq__(Midi self, object other: Union[Midi, bytearray]) -> bool:
-        try:
-            return (
-                len(other) == 4
-                and self.data[0] == other[0]
-                and self.data[1] == other[1]
-                and self.data[2] == other[2]
-                and self.data[3] == other[3]
-            )
-        except (TypeError, IndexError) as exc:
-            return False
+    def __eq__(Midi self, Midi other: Midi) -> bool:
+        return self.data[:] == other.data[:]
+
+    def __lt__(Midi self, Midi other: Midi) -> bool:
+        return self.data[:] < other.data[:]
 
     def __getitem__(self, item):
         if 0 <= item < 4:
