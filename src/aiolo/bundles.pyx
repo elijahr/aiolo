@@ -103,10 +103,10 @@ cdef class Bundle:
         def raw(Bundle self) -> array.array:
             cdef size_t length = lo.lo_bundle_length(self.lo_bundle)
             cdef void* raw = malloc(length)
-            arr = array.array('B')
+            arr = array.array('b')
             lo.lo_bundle_serialise(self.lo_bundle, raw, &length)
             for i in range(length):
-                arr.append((<unsigned char*>raw)[i])
+                arr.append((<char*>raw)[i])
             try:
                 return arr
             finally:

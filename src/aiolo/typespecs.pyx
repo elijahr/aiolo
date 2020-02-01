@@ -119,8 +119,6 @@ ARGDEF_INT_LOOKUP = {
     midis.Midi: LO_MIDI,
     timetags.TimeTag: LO_TIMETAG,
     datetime.datetime: LO_TIMETAG,
-    True: LO_TRUE,
-    False: LO_FALSE,
     None: LO_NIL,
     type(None): LO_NIL,
     INFINITY: LO_INFINITUM,
@@ -226,7 +224,6 @@ BASIC_TYPES = (
 cdef class TypeSpec(abstractspecs.AbstractSpec):
     def __cinit__(self, typespec: types.TypeSpecTypes):
         cdef TypeSpec a
-
         IF PYPY:
             self.array = array.array('b')
         ELSE:
@@ -562,13 +559,18 @@ cpdef object guess_for_arg_list(object args: Iterable[types.MessageTypes]):
     ELSE:
         cdef array.array raw_typespec = array.copy(TYPESPEC_ARRAY_TEMPLATE)
     for arg in args:
-        try:
-            raw_typespec.append(ARGDEF_INT_LOOKUP[arg])
-        except (KeyError, TypeError):
+        if arg is True:
+            raw_typespec.append(LO_TRUE)
+        elif arg is False:
+            raw_typespec.append(LO_FALSE)
+        else:
             try:
-                raw_typespec.append(ARGDEF_INT_LOOKUP[type(arg)])
-            except KeyError:
-                raise TypeError('Unsupported argument value %r' % arg)
+                raw_typespec.append(ARGDEF_INT_LOOKUP[arg])
+            except (KeyError, TypeError):
+                try:
+                    raw_typespec.append(ARGDEF_INT_LOOKUP[type(arg)])
+                except KeyError:
+                    raise TypeError('Unsupported argument value %r' % arg)
     return raw_typespec
 
 
@@ -576,12 +578,19 @@ cpdef bint flatten_typespec_into(
     object typespec: types.TypeSpecTypes,
     object into: array.array
 ) except 0:
-    try:
-        into.append(ARGDEF_INT_LOOKUP[typespec])
-    except (KeyError, TypeError):
-        pass
-    else:
+    if typespec is True:
+        into.append(LO_TRUE)
         return True
+    elif typespec is False:
+        into.append(LO_FALSE)
+        return True
+    else:
+        try:
+            into.append(ARGDEF_INT_LOOKUP[typespec])
+        except (KeyError, TypeError):
+            pass
+        else:
+            return True
     if isinstance(typespec, TypeSpec):
         IF PYPY:
             into.extend(typespec.array)

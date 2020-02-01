@@ -406,6 +406,10 @@ def test_typespec_unpack_message_value_error(path, typespec, data):
 
 
 @pytest.mark.parametrize('value, typespec', [
+    [1, INT64],
+    [1.0, DOUBLE],
+    [0, INT64],
+    [0.0, DOUBLE],
     [42, INT64],
     [42.0, DOUBLE],
     ['foo', STRING],

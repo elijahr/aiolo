@@ -16,7 +16,7 @@ __all__ = ['Message']
 
 
 IF not PYPY:
-    cdef array.array MESSAGE_ARRAY_TEMPLATE = array.array('B')
+    cdef array.array MESSAGE_ARRAY_TEMPLATE = array.array('b')
 
 
 cdef class Message:
@@ -71,10 +71,10 @@ cdef class Message:
         def raw(Message self) -> array.array:
             cdef size_t length = lo.lo_message_length(self.lo_message, self.route.path.as_bytes)
             cdef void* raw = malloc(length)
-            arr = array.array('B')
+            arr = array.array('b')
             lo.lo_message_serialise(self.lo_message, self.route.path.as_bytes, raw, &length)
             for i in range(length):
-                arr.append((<unsigned char*>raw)[i])
+                arr.append((<char*>raw)[i])
             try:
                 return arr
             finally:
