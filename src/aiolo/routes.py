@@ -1,6 +1,6 @@
 import asyncio
 import collections.abc
-from typing import Union, Tuple, Iterable
+from typing import Union, Tuple, Iterable, Iterator
 
 from . import typespecs, exceptions, logs, paths, types
 
@@ -116,7 +116,7 @@ class Sub(collections.abc.AsyncIterator):
         if isinstance(other, Sub):
             return self.route == other.route
         elif isinstance(other, Subs):
-            return self == other
+            return len(other) == 1 and list(other)[0] == self
         else:
             raise TypeError('Invalid value for Sub.__eq__: %s' % repr(other))
 
@@ -124,7 +124,7 @@ class Sub(collections.abc.AsyncIterator):
         if isinstance(other, Sub):
             return self.route < other.route
         elif isinstance(other, Subs):
-            return self < other
+            return hash(self.route) < hash(other)
         else:
             raise TypeError('Invalid value for Sub.__lt__: %s' % repr(other))
 
@@ -137,7 +137,7 @@ class Sub(collections.abc.AsyncIterator):
         elif isinstance(other, Sub):
             return self.route == other.route
         elif isinstance(other, Subs):
-            return self == other
+            return len(other) == 1 and list(other)[0] == self
         raise TypeError('Invalid value for Sub.__contains__: %s' % repr(other))
 
     def __or__(self, other: Union['Sub', 'Subs']) -> 'Subs':
@@ -189,10 +189,12 @@ class Subs(collections.abc.AsyncIterator):
         return len(self._subs)
 
     def __hash__(self):
-        return hash('|'.join([str(hash(s)) for s in sorted(self._subs)]))
+        return hash('Subs:' + ('|'.join([str(hash(s)) for s in sorted(self._subs)])))
 
     def __eq__(self, other: Union['Sub', 'Subs']) -> bool:
-        if not isinstance(other, (Sub, Subs)):
+        if isinstance(other, Sub):
+            other = Subs(other)
+        if not isinstance(other, Subs):
             raise TypeError('Invalid value for Subs.__eq__: %s' % repr(other))
         return hash(self) == hash(other)
 
@@ -219,6 +221,9 @@ class Subs(collections.abc.AsyncIterator):
         else:
             sub_set |= other._subs
         return self.__class__(*tuple(sub_set))
+
+    def __iter__(self, item) -> Iterator[Sub]:
+        return iter(self._subs)
 
     def __aiter__(self) -> 'Subs':
         return self
