@@ -2,6 +2,7 @@ import array
 import asyncio
 import contextlib
 import datetime
+import functools
 import random
 import sys
 from typing import Union
@@ -111,24 +112,25 @@ async def server(event_loop, unused_tcp_port_factory):
     server.stop()
 
 
-@pytest.mark.parametrize('index,expected_factories_length', zip(range(8), [8]*8))
-def test_server_init(index, expected_factories_length, any_server_class, unused_tcp_port):
+@pytest.fixture(params=[
+    lambda cls, port: cls(),
+    lambda cls, port: cls(port=port()),
+    lambda cls, port: cls(url='osc.udp://:%s' % port()),
+    lambda cls, port: cls(url='osc.unix:///tmp/test-aiolo-%s.osc' % port()),
+    lambda cls, port: cls(proto=PROTO_TCP, port=port()),
+    lambda cls, port: cls(proto=PROTO_UDP, port=port()),
+    lambda cls, port: cls(proto=PROTO_UNIX, port='/tmp/test-aiolo-%s.osc' % port()),
+    lambda cls, port: cls(multicast=MultiCast('224.0.1.1', port=port())),
+])
+def server_init_factory(request, any_server_class, unused_tcp_port_factory):
+    return functools.partial(request.param, any_server_class, unused_tcp_port_factory)
+
+
+def test_server_init(server_init_factory):
     """
     Test that servers can be constructed and started with various call patterns.
     """
-    factories = [
-        lambda: any_server_class(),
-        lambda: any_server_class(port=unused_tcp_port),
-        lambda: any_server_class(url='osc.udp://:%s' % unused_tcp_port),
-        lambda: any_server_class(url='osc.unix:///tmp/test-aiolo-%s.osc' % unused_tcp_port),
-        lambda: any_server_class(proto=PROTO_TCP, port=unused_tcp_port),
-        lambda: any_server_class(proto=PROTO_UDP, port=unused_tcp_port),
-        lambda: any_server_class(proto=PROTO_UNIX, port='/tmp/test-aiolo-%s.osc' % unused_tcp_port),
-        lambda: any_server_class(multicast=MultiCast('224.0.1.1', port=unused_tcp_port)),
-    ]
-    assert len(factories) == expected_factories_length
-
-    server = factories[index]()
+    server = server_init_factory()
     server.start()
     assert server.running
     assert server.port is not None
@@ -153,36 +155,46 @@ def test_server_init_proto_default_unix_port(any_server_class, unused_tcp_port):
     server.stop()
 
 
-@pytest.mark.parametrize('index,expected_factories_length', zip(range(4), [4]*4))
-def test_server_start_error(index, expected_factories_length, any_server_class, unused_tcp_port):
-    factories = [
-        lambda: any_server_class(port='/foo'),
-        lambda: any_server_class(port=-1),
-        lambda: any_server_class(url='osc.foo://:%s' % unused_tcp_port),
-        lambda: any_server_class(url='osc.unix://'),
-    ]
-    assert len(factories) == expected_factories_length
-    server = factories[index]()
+@pytest.fixture(params=[
+    lambda cls, port: cls(port='/foo'),
+    lambda cls, port: cls(port=-1),
+    lambda cls, port: cls(url='osc.foo://:%s' % port()),
+    lambda cls, port: cls(url='osc.unix://'),
+])
+def server_start_error_factory(request, any_server_class, unused_tcp_port_factory):
+    return functools.partial(request.param, any_server_class, unused_tcp_port_factory)
+
+
+def test_server_start_error(server_start_error_factory):
+    server = server_start_error_factory()
     with pytest.raises(StartError):
         server.start()
 
 
-@pytest.mark.parametrize('index,expected_factories_length', zip(range(8), [8]*8))
-def test_server_init_error(index, expected_factories_length, any_server_class, unused_tcp_port):
-    factories = [
-        lambda: any_server_class(multicast='foo'),
-        lambda: any_server_class(proto=-1, port=unused_tcp_port),
-        lambda: any_server_class(proto='foo', port=unused_tcp_port),
-        lambda: any_server_class(url='osc.tcp://:%s' % unused_tcp_port, port='10'),
-        lambda: any_server_class(url='osc.tcp://:%s' % unused_tcp_port, proto=PROTO_UDP),
-        lambda: any_server_class(
-            url='osc.tcp://:%s' % unused_tcp_port, multicast=MultiCast('224.0.1.1', port=unused_tcp_port)),
-        lambda: any_server_class(proto=PROTO_TCP, multicast=MultiCast('224.0.1.1', port=unused_tcp_port)),
-        lambda: any_server_class(port='10', multicast=MultiCast('224.0.1.1', port=unused_tcp_port)),
-    ]
-    assert len(factories) == expected_factories_length
+def server_init_error_multicast_factory(any_server_class, unused_tcp_port_factory):
+    port = unused_tcp_port_factory()
+    return any_server_class(
+        url='osc.tcp://:%s' % port,
+        multicast=MultiCast('224.0.1.1', port=port()))
+
+
+@pytest.fixture(params=[
+    lambda cls, port: cls(multicast='foo'),
+    lambda cls, port: cls(proto=-1, port=port()),
+    lambda cls, port: cls(proto='foo', port=port()),
+    lambda cls, port: cls(url='osc.tcp://:%s' % port(), port='10'),
+    lambda cls, port: cls(url='osc.tcp://:%s' % port(), proto=PROTO_UDP),
+    server_init_error_multicast_factory,
+    lambda cls, port: cls(proto=PROTO_TCP, multicast=MultiCast('224.0.1.1', port=port())),
+    lambda cls, port: cls(port='10', multicast=MultiCast('224.0.1.1', port=port())),
+])
+def server_init_error_factory(request, any_server_class, unused_tcp_port_factory):
+    return functools.partial(request.param, any_server_class, unused_tcp_port_factory)
+
+
+def test_server_init_error(server_init_error_factory):
     with pytest.raises((ValueError, TypeError)):
-        factories[index]()
+        server_init_error_factory()
 
 
 @pytest.mark.asyncio
@@ -200,24 +212,36 @@ async def test_multiple_addresses(any_server):
     assert results == [[0], [1], [2]]
 
 
-@pytest.mark.parametrize('index,expected_factories_length', zip(range(6), [6]*6))
-def test_address_init(index, expected_factories_length, ip_interface, unused_tcp_port):
+@pytest.fixture(params=[
+    lambda port, ip, iface: (
+        Address(url='osc.tcp://%s:%s' % (ip, port())),
+        ip, iface),
+    lambda port, ip, iface: (
+        Address(url='osc.udp://%s:%s' % (ip, port())),
+        ip, iface),
+    lambda port, ip, iface: (
+        Address(url='osc.unix:///aiolo-test-%s.osc' % port()),
+        ip, iface),
+    lambda port, ip, iface: (
+        Address(proto=PROTO_TCP, host=ip, port=port()),
+        ip, iface),
+    lambda port, ip, iface: (
+        Address(proto=PROTO_UDP, host=ip, port=port()),
+        ip, iface),
+    lambda port, ip, iface: (
+        Address(proto=PROTO_UNIX, host=ip, port='/tmp/aiolo-test-%s.osc' % port()),
+        ip, iface),
+])
+def address_init_factory(request, ip_interface, unused_tcp_port_factory):
+    ip, iface = ip_interface
+    return functools.partial(request.param, unused_tcp_port_factory, ip, iface)
+
+
+def test_address_init(address_init_factory):
     """
     Test Address initialization and state.
     """
-    ip, iface = ip_interface
-
-    factories = [
-        lambda: Address(url='osc.tcp://%s:%s' % (ip, unused_tcp_port)),
-        lambda: Address(url='osc.udp://%s:%s' % (ip, unused_tcp_port)),
-        lambda: Address(url='osc.unix:///aiolo-test-%s.osc' % unused_tcp_port),
-        lambda: Address(proto=PROTO_TCP, host=ip, port=unused_tcp_port),
-        lambda: Address(proto=PROTO_UDP, host=ip, port=unused_tcp_port),
-        lambda: Address(proto=PROTO_UNIX, host=ip, port='/tmp/aiolo-test-%s.osc' % unused_tcp_port),
-    ]
-    assert len(factories) == expected_factories_length
-
-    address = factories[index]()
+    address, ip, iface = address_init_factory()
 
     if iface is None or address.proto in (PROTO_UNIX, PROTO_DEFAULT):
         with pytest.raises(ValueError):
@@ -226,7 +250,7 @@ def test_address_init(index, expected_factories_length, ip_interface, unused_tcp
         address.interface = iface
         assert address.interface == iface
 
-    address = factories[index]()
+    address, ip, iface = address_init_factory()
     if not ip or address.proto == PROTO_UNIX:
         with pytest.raises(ValueError):
             address.set_ip(ip)
@@ -235,7 +259,7 @@ def test_address_init(index, expected_factories_length, ip_interface, unused_tcp
         address.set_ip(ip)
         assert address.interface == iface
 
-    address = factories[index]()
+    address, ip, iface = address_init_factory()
     with pytest.raises(ValueError):
         address.interface = 'foobar0'
     with pytest.raises(ValueError):
