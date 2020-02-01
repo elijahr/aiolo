@@ -32,6 +32,11 @@ PROTOS_BY_NAME = {
     'osc.unix': PROTO_UNIX,
     'osc.tcp': PROTO_TCP,
 
+    'default': PROTO_DEFAULT,
+    'udp': PROTO_UDP,
+    'unix': PROTO_UNIX,
+    'tcp': PROTO_TCP,
+
     b'': PROTO_DEFAULT,
     b'\x00': PROTO_DEFAULT,
     b'\x01': PROTO_UDP,
@@ -43,10 +48,10 @@ PROTOS_BY_NAME = {
     b'osc.unix': PROTO_UNIX,
     b'osc.tcp': PROTO_TCP,
 
-    b'osc.default': PROTO_DEFAULT,
-    b'osc.udp': PROTO_UDP,
-    b'osc.unix': PROTO_UNIX,
-    b'osc.tcp': PROTO_TCP,
+    b'default': PROTO_DEFAULT,
+    b'udp': PROTO_UDP,
+    b'unix': PROTO_UNIX,
+    b'tcp': PROTO_TCP,
 }
 
 

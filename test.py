@@ -159,7 +159,6 @@ def test_server_init_proto_default_unix_port(any_server_class, unused_tcp_port):
     lambda cls, port: cls(port='/foo'),
     lambda cls, port: cls(port=-1),
     lambda cls, port: cls(url='osc.foo://:%s' % port()),
-    lambda cls, port: cls(url='osc.unix://'),
 ])
 def server_start_error_factory(request, any_server_class, unused_tcp_port_factory):
     return functools.partial(request.param, any_server_class, unused_tcp_port_factory)
