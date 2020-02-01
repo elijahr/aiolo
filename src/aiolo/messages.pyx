@@ -74,7 +74,7 @@ cdef class Message:
             arr = array.array('B')
             lo.lo_message_serialise(self.lo_message, self.route.path.as_bytes, raw, &length)
             for i in range(length):
-                arr.append((<char*>raw)[i])
+                arr.append((<unsigned char*>raw)[i])
             try:
                 return arr
             finally:

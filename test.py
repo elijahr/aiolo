@@ -207,7 +207,7 @@ def test_address_init(index, expected_factories_length, ip_interface, unused_tcp
     """
     ip, iface = ip_interface
 
-    inits = [
+    factories = [
         lambda: Address(url='osc.tcp://%s:%s' % (ip, unused_tcp_port)),
         lambda: Address(url='osc.udp://%s:%s' % (ip, unused_tcp_port)),
         lambda: Address(url='osc.unix:///aiolo-test-%s.osc' % unused_tcp_port),
@@ -215,8 +215,9 @@ def test_address_init(index, expected_factories_length, ip_interface, unused_tcp
         lambda: Address(proto=PROTO_UDP, host=ip, port=unused_tcp_port),
         lambda: Address(proto=PROTO_UNIX, host=ip, port='/tmp/aiolo-test-%s.osc' % unused_tcp_port),
     ]
+    assert len(factories) == expected_factories_length
 
-    address = inits[index]()
+    address = factories[index]()
 
     if iface is None or address.proto in (PROTO_UNIX, PROTO_DEFAULT):
         with pytest.raises(ValueError):
@@ -225,7 +226,7 @@ def test_address_init(index, expected_factories_length, ip_interface, unused_tcp
         address.interface = iface
         assert address.interface == iface
 
-    address = inits[index]()
+    address = factories[index]()
     if not ip or address.proto == PROTO_UNIX:
         with pytest.raises(ValueError):
             address.set_ip(ip)
@@ -234,7 +235,7 @@ def test_address_init(index, expected_factories_length, ip_interface, unused_tcp
         address.set_ip(ip)
         assert address.interface == iface
 
-    address = inits[index]()
+    address = factories[index]()
     with pytest.raises(ValueError):
         address.interface = 'foobar0'
     with pytest.raises(ValueError):

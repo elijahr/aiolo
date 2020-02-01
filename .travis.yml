@@ -19,6 +19,7 @@ addons:
     - python
     - python-pip
     - python-virtualenv
+    - patchelf
 
 matrix:
   include:
@@ -51,13 +52,17 @@ install:
   - |
     case $TRAVIS_OS_NAME in
       linux)
-        sudo apt-get install liblo7 liblo-dev;
+        if [ "x$USE_SYSTEM_LIBLO" == "x1" ]; then
+          sudo apt-get install liblo7 liblo-dev;
+        fi
         sudo pip install pipenv;
         pipenv install --python `which python` --skip-lock;
         ;;
       osx)
-        brew update;
-        brew install liblo;
+        if [ "x$USE_SYSTEM_LIBLO" == "x1" ]; then
+          brew update;
+          brew install liblo;
+        fi
         pip install pipenv;
         ulimit -n 1200;
         pwd;
@@ -75,11 +80,11 @@ install:
 
 script:
   - pipenv run python setup.py build_ext --debug
-  - pipenv run pip install uvloop netifaces pytest pytest-asyncio pytest-xdist pytest-lazy-fixture
+  - pipenv run pip install uvloop netifaces pytest pytest-asyncio pytest-xdist
   - |
-      if [ "x$USE_SYSTEM_LIBLO" == "x" ]; then
-        pipenv run python setup.py install
-      else
+      if [ "x$USE_SYSTEM_LIBLO" == "x1" ]; then
         pipenv run python setup.py install --use-system-liblo
+      else
+        pipenv run python setup.py install
       fi
   - pipenv run pytest --verbose -n 4 test.py

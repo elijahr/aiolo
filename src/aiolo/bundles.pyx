@@ -106,7 +106,7 @@ cdef class Bundle:
             arr = array.array('B')
             lo.lo_bundle_serialise(self.lo_bundle, raw, &length)
             for i in range(length):
-                arr.append((<char*>raw)[i])
+                arr.append((<unsigned char*>raw)[i])
             try:
                 return arr
             finally:

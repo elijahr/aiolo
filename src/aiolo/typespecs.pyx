@@ -269,18 +269,22 @@ cdef class TypeSpec(abstractspecs.AbstractSpec):
         return repr(self.as_str)
 
     def __eq__(self, other: types.TypeSpecTypes) -> bool:
-        if not isinstance(other, TypeSpec):
+        if isinstance(other, str):
+            return self.as_str == other
+        elif not isinstance(other, TypeSpec):
             other = TypeSpec(other)
         return self.array == other.array \
                and self.matches_any == other.matches_any \
                and self.matches_no == other.matches_no
 
     def __lt__(self, other: 'TypeSpec') -> bool:
-        if not isinstance(other, TypeSpec):
-            other = TypeSpec(other)
-        if self.matches_any:
+        if isinstance(other, str):
+            return self.as_str < other
+        elif self.matches_any:
             return False
-        elif other.matches_any:
+        elif not isinstance(other, TypeSpec):
+            other = TypeSpec(other)
+        if other.matches_any:
             return True
         return self.array < other.array
 
