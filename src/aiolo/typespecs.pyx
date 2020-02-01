@@ -228,7 +228,7 @@ cdef class TypeSpec(abstractspecs.AbstractSpec):
         cdef TypeSpec a
 
         IF PYPY:
-            self.array = array.array('B')
+            self.array = array.array('b')
         ELSE:
             self.array = array.copy(TYPESPEC_ARRAY_TEMPLATE)
         self.none = False
@@ -239,7 +239,7 @@ cdef class TypeSpec(abstractspecs.AbstractSpec):
                 self.none = True
             else:
                 IF PYPY:
-                    self.array += a.array
+                    self.array.extend(a.array)
                 ELSE:
                     array.extend(self.array, a.array)
         elif typespec is None:
@@ -558,7 +558,7 @@ cdef class TypeSpec(abstractspecs.AbstractSpec):
 
 cpdef object guess_for_arg_list(object args: Iterable[types.MessageTypes]):
     IF PYPY:
-        cdef object raw_typespec = array.array('B')
+        cdef object raw_typespec = array.array('b')
     ELSE:
         cdef array.array raw_typespec = array.copy(TYPESPEC_ARRAY_TEMPLATE)
     for arg in args:
@@ -572,29 +572,29 @@ cpdef object guess_for_arg_list(object args: Iterable[types.MessageTypes]):
     return raw_typespec
 
 
-cpdef void flatten_typespec_into(
+cpdef bint flatten_typespec_into(
     object typespec: types.TypeSpecTypes,
     object into: array.array
-):
+) except 0:
     try:
         into.append(ARGDEF_INT_LOOKUP[typespec])
     except (KeyError, TypeError):
         pass
     else:
-        return
+        return True
     if isinstance(typespec, TypeSpec):
         IF PYPY:
-            into += typespec.array
+            into.extend(typespec.array)
         ELSE:
             array.extend(into, typespec.array)
     elif isinstance(typespec, array.array):
         IF PYPY:
-            into += typespec
+            into.extend(typespec)
         ELSE:
             array.extend(into, typespec)
     elif isinstance(typespec, str):
         IF PYPY:
-            into += array.array('b', typespec.encode('utf8'))
+            into.extend(array.array('b', typespec.encode('utf8')))
         ELSE:
             array.extend(into, array.array('b', typespec.encode('utf8')))
     elif typespec in EMPTY_STRINGS:
@@ -605,9 +605,10 @@ cpdef void flatten_typespec_into(
                 flatten_typespec_into(a, into)
         except TypeError:
             raise TypeError('Invalid typespec value %r' % typespec)
+    return True
 
 
-cpdef void flatten_args_into(object data: Iterable, list into: List):
+cpdef bint flatten_args_into(object data: Iterable, list into: List) except 0:
     try:
         for item in data:
             if isinstance(item, BASIC_TYPES):
@@ -617,6 +618,7 @@ cpdef void flatten_args_into(object data: Iterable, list into: List):
     except TypeError:
         # not iterable
         into.append(data)
+    return True
 
 
 ANY_ARGS = TypeSpec(None)

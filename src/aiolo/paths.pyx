@@ -39,12 +39,12 @@ cdef class Path(abstractspecs.AbstractSpec):
                 self.none = True
             else:
                 IF PYPY:
-                    self.array += p.array
+                    self.array.extend(p.array)
                 ELSE:
                     array.extend(self.array, p.array)
         elif isinstance(path, str):
             IF PYPY:
-                self.array += array.array('b', path.encode('utf8'))
+                self.array.extend(array.array('b', path.encode('utf8')))
             ELSE:
                 array.extend(self.array, array.array('b', path.encode('utf8')))
         elif path is None:

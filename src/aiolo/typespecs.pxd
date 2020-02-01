@@ -62,9 +62,9 @@ cdef class TypeSpec(abstractspecs.AbstractSpec):
 
 cpdef object guess_for_arg_list(object args: Iterable[types.MessageTypes])
 
-cpdef void flatten_typespec_into(
+cpdef bint flatten_typespec_into(
     object typespec: types.TypeSpecTypes,
     object into: array.array
-)
+) except 0
 
-cpdef void flatten_args_into(object data: Iterable, list into: List)
+cpdef bint flatten_args_into(object data: Iterable, list into: List) except 0
