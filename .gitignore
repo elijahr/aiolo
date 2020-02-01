@@ -10,3 +10,5 @@ Pipfile*
 .cache/
 test.log
 cython_debug
+__pycache__
+*.pyc

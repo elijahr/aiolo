@@ -91,7 +91,6 @@ class build_ext(_build_ext):
 
     def finalize_options(self):
         from Cython.Build.Dependencies import cythonize
-        self.debug = 1
         for item in itertools.chain(
                 glob.glob(os.path.join(DIR, 'src', 'aiolo', '*.c')),
                 glob.glob(os.path.join(DIR, 'src', 'aiolo', '*.h'))):
@@ -142,23 +141,23 @@ class build_ext(_build_ext):
             self.library_dirs.append(library_dir)
             self.include_dirs.append(include_dir)
             # Build custom liblo to install alongside aiolo
-            # try:
-            #     subprocess.check_call(['make', 'clean'])
-            # except subprocess.CalledProcessError:
-            #     pass
+            try:
+                subprocess.check_call(['make', 'clean'])
+            except subprocess.CalledProcessError:
+                pass
             cmds = [
-                # ['./autogen.sh',
-                #  '--prefix=%s' % liblo_prefix,
-                #  '--disable-tests',
-                #  '--disable-network-tests',
-                #  '--disable-tools',
-                #  '--disable-examples'],
+                ['./autogen.sh',
+                 '--prefix=%s' % liblo_prefix,
+                 '--disable-tests',
+                 '--disable-network-tests',
+                 '--disable-tools',
+                 '--disable-examples'],
                 ['make'],
                 ['make', 'install'],  # Install to the build directory
             ]
-            # if self.debug:
-            #     # Build liblo with debug symbols too
-            #     cmds[0].append('--enable-debug')
+            if self.debug:
+                # Build liblo with debug symbols too
+                cmds[0].append('--enable-debug')
             for cmd in cmds:
                 subprocess.check_call(
                     cmd, stdin=sys.stdin, stdout=sys.stdout, stderr=sys.stderr, cwd=LIBLO_DIR)
