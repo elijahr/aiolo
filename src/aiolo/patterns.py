@@ -1,13 +1,6 @@
 import re
-import sys
 from itertools import groupby, count
 from typing import Union, Generator
-
-
-if sys.version_info[:2] >= (3, 7):
-    Pattern = re.Pattern
-else:
-    Pattern = re.regex
 
 
 from . import logs
@@ -147,7 +140,7 @@ MAYBE = 4
 STRING = 5
 
 
-def compile_osc_address_pattern(path_string: Union[str, None]) -> Pattern:
+def compile_osc_address_pattern(path_string: Union[str, None]):
     if path_string is None:
         path_string = '//*'
     path_part_strings = path_string.split('/')[1:]

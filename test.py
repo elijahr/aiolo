@@ -216,7 +216,7 @@ def test_address_init(index, expected_factories_length, ip_interface, unused_tcp
         lambda: Address(proto=PROTO_UNIX, host=ip, port='/tmp/aiolo-test-%s.osc' % unused_tcp_port),
     ]
 
-    address = inits[index]
+    address = inits[index]()
 
     if iface is None or address.proto in (PROTO_UNIX, PROTO_DEFAULT):
         with pytest.raises(ValueError):
@@ -225,7 +225,7 @@ def test_address_init(index, expected_factories_length, ip_interface, unused_tcp
         address.interface = iface
         assert address.interface == iface
 
-    address = eval(init)
+    address = inits[index]()
     if not ip or address.proto == PROTO_UNIX:
         with pytest.raises(ValueError):
             address.set_ip(ip)
@@ -234,7 +234,7 @@ def test_address_init(index, expected_factories_length, ip_interface, unused_tcp
         address.set_ip(ip)
         assert address.interface == iface
 
-    address = eval(init)
+    address = inits[index]()
     with pytest.raises(ValueError):
         address.interface = 'foobar0'
     with pytest.raises(ValueError):
@@ -325,8 +325,7 @@ def test_typespec_unpack_message(path, typespec, data, expected):
     """
     route = Route(path, typespec)
     message = Message(route, data)
-    assert route.typespec.unpack_message(message) == expected
-
+    assert message.unpack() == expected
 
 def typespec_unpack_message_type_error_data():
     for typespec_test_data in test_data.ARGDEF_TEST_DATA:
@@ -343,7 +342,7 @@ def test_typespec_unpack_message_type_error(path, typespec, data):
     route = Route(path, typespec)
     with pytest.raises(TypeError):
         message = Message(route, data)
-        route.typespec.unpack_message(message)
+        message.unpack()
 
 
 def typespec_unpack_message_overflow_error_data():
@@ -361,7 +360,7 @@ def test_typespec_unpack_message_overflow_error(path, typespec, data):
     route = Route(path, typespec)
     with pytest.raises(OverflowError):
         message = Message(route, data)
-        route.typespec.unpack_message(message)
+        message.unpack()
 
 
 def typespec_unpack_message_value_error_data():
@@ -379,7 +378,7 @@ def test_typespec_unpack_message_value_error(path, typespec, data):
     route = Route(path, typespec)
     with pytest.raises(ValueError):
         message = Message(route, data)
-        route.typespec.unpack_message(message)
+        message.unpack()
 
 
 @pytest.mark.parametrize('value, typespec', [

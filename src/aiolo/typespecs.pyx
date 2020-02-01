@@ -1,9 +1,12 @@
 # cython: language_level=3
 
 import datetime
-from typing import Iterable, Union, List
+from typing import Iterable, List
+from libc.stdlib cimport malloc, free
 
-from cpython cimport array
+IF not PYPY:
+    from cpython cimport array
+
 import array
 
 from libc.stdint cimport \
@@ -102,8 +105,9 @@ INFINITY = float('inf')
 INFINITIES = (INFINITY, -INFINITY)
 
 
-cdef array.array TYPESPEC_ARRAY_TEMPLATE = array.array('b')
-cdef array.array BLOB_ARRAY_TEMPLATE = array.array('b')
+IF not PYPY:
+    cdef array.array TYPESPEC_ARRAY_TEMPLATE = array.array('b')
+    cdef array.array BLOB_ARRAY_TEMPLATE = array.array('b')
 
 
 ARGDEF_INT_LOOKUP = {
@@ -169,7 +173,7 @@ ARGTYPE_NAMES = {
     LO_INFINITUM: 'INFINITUM',
 }
 
-cdef array.array ARGTYPES = array.array('b', [
+_ARGTYPES = [
     LO_INT32,
     LO_FLOAT,
     LO_STRING,
@@ -184,14 +188,18 @@ cdef array.array ARGTYPES = array.array('b', [
     LO_FALSE,
     LO_NIL,
     LO_INFINITUM,
-])
+]
 
-
-cdef array.array ARGTYPES_INTS = array.array('b', [LO_INT64, LO_INT32])
-
-cdef array.array ARGTYPES_FLOATS = array.array('b', [LO_FLOAT, LO_DOUBLE])
-
-cdef array.array ARGTYPES_STRINGS = array.array('b', [LO_STRING, LO_SYMBOL, LO_CHAR])
+IF PYPY:
+    cdef object ARGTYPES = array.array('b', _ARGTYPES)
+    cdef object ARGTYPES_INTS = array.array('b', [LO_INT64, LO_INT32])
+    cdef object ARGTYPES_FLOATS = array.array('b', [LO_FLOAT, LO_DOUBLE])
+    cdef object ARGTYPES_STRINGS = array.array('b', [LO_STRING, LO_SYMBOL, LO_CHAR])
+ELSE:
+    cdef array.array ARGTYPES = array.array('b', _ARGTYPES)
+    cdef array.array ARGTYPES_INTS = array.array('b', [LO_INT64, LO_INT32])
+    cdef array.array ARGTYPES_FLOATS = array.array('b', [LO_FLOAT, LO_DOUBLE])
+    cdef array.array ARGTYPES_STRINGS = array.array('b', [LO_STRING, LO_SYMBOL, LO_CHAR])
 
 TYPES_CHAR = (str, int)
 
@@ -219,7 +227,10 @@ cdef class TypeSpec(abstractspecs.AbstractSpec):
     def __cinit__(self, typespec: types.TypeSpecTypes):
         cdef TypeSpec a
 
-        self.array = array.copy(TYPESPEC_ARRAY_TEMPLATE)
+        IF PYPY:
+            self.array = array.array('B')
+        ELSE:
+            self.array = array.copy(TYPESPEC_ARRAY_TEMPLATE)
         self.none = False
 
         if isinstance(typespec, TypeSpec):
@@ -227,7 +238,10 @@ cdef class TypeSpec(abstractspecs.AbstractSpec):
             if a.none:
                 self.none = True
             else:
-                array.extend(self.array, a.array)
+                IF PYPY:
+                    self.array += a.array
+                ELSE:
+                    array.extend(self.array, a.array)
         elif typespec is None:
             self.none = True
         else:
@@ -313,12 +327,19 @@ cdef class TypeSpec(abstractspecs.AbstractSpec):
 
     cdef list unpack_args(self, lo.lo_arg ** argv, int argc):
         cdef:
-            array.array typespec_array = self.array
+            IF PYPY:
+                object typespec_array = self.array
+            ELSE:
+                array.array typespec_array = self.array
             int i = 0
             int j
             uint32_t blobsize
             lo.lo_arg * arg
-            array.array blob
+            void * raw_blob
+            IF PYPY:
+                object blob
+            ELSE:
+                array.array blob
             list data = []
 
         if len(typespec_array) != argc:
@@ -337,8 +358,16 @@ cdef class TypeSpec(abstractspecs.AbstractSpec):
                 data.append(s.decode('utf8'))
             elif typespec_array[i] == LO_BLOB:
                 blobsize = lo.lo_blob_datasize(<lo.lo_blob>&(arg.blob))
-                blob = array.clone(BLOB_ARRAY_TEMPLATE, blobsize, zero=True)
-                memcpy(<void*>blob.data.as_voidptr, lo.lo_blob_dataptr(<lo.lo_blob>&(arg.blob)), blobsize)
+                IF PYPY:
+                    blob = array.array('b')
+                    raw_blob = malloc(blobsize)
+                    memcpy(raw_blob, lo.lo_blob_dataptr(<lo.lo_blob>&(arg.blob)), blobsize)
+                    for j in range(blobsize):
+                        blob.append((<char*>raw_blob)[j])
+                    free(raw_blob)
+                ELSE:
+                    blob = array.clone(BLOB_ARRAY_TEMPLATE, blobsize, zero=True)
+                    memcpy(<void*>blob.data.as_voidptr, lo.lo_blob_dataptr(<lo.lo_blob>&(arg.blob)), blobsize)
                 data.append(blob)
             elif typespec_array[i] == LO_INT64:
                 data.append(arg.i64)
@@ -369,7 +398,10 @@ cdef class TypeSpec(abstractspecs.AbstractSpec):
 
     cdef lo.lo_message pack_lo_message(self, object args: Iterable[types.MessageTypes]) except NULL:
         cdef:
-            array.array typespec_array = self.array
+            IF PYPY:
+                object typespec_array = self.array
+            ELSE:
+                array.array typespec_array = self.array
             lo.lo_message lo_message
             lo.lo_blob lo_blob
             uint8_t * midi_p
@@ -418,7 +450,11 @@ cdef class TypeSpec(abstractspecs.AbstractSpec):
                 byarg = None
                 charg = NULL
                 if isinstance(arg, array.array):
-                    charg = (<array.array>arg).data.as_chars
+                    IF PYPY:
+                        byarg = arg.tobytes()
+                        charg = <char*>byarg
+                    ELSE:
+                        charg = (<array.array>arg).data.as_chars
                 elif isinstance(arg, str):
                     byarg = arg.encode('utf8')
                     charg = <char*>byarg
@@ -450,7 +486,11 @@ cdef class TypeSpec(abstractspecs.AbstractSpec):
                 size = 0
                 if isinstance(arg, array.array):
                     size = <int32_t>len(arg)
-                    charg = (<array.array>arg).data.as_chars
+                    IF PYPY:
+                        byarg = arg.tobytes()
+                        charg = <char*>byarg
+                    ELSE:
+                        charg = (<array.array>arg).data.as_chars
                 elif isinstance(arg, bytes):
                     byarg = arg
                     size = <int32_t>len(byarg)
@@ -512,8 +552,11 @@ cdef class TypeSpec(abstractspecs.AbstractSpec):
         return cls(guess_for_arg_list(args))
 
 
-cpdef array.array guess_for_arg_list(object args: Iterable[types.MessageTypes]):
-    cdef array.array raw_typespec = array.copy(TYPESPEC_ARRAY_TEMPLATE)
+cpdef object guess_for_arg_list(object args: Iterable[types.MessageTypes]):
+    IF PYPY:
+        cdef object raw_typespec = array.array('B')
+    ELSE:
+        cdef array.array raw_typespec = array.copy(TYPESPEC_ARRAY_TEMPLATE)
     for arg in args:
         try:
             raw_typespec.append(ARGDEF_INT_LOOKUP[arg])
@@ -527,7 +570,7 @@ cpdef array.array guess_for_arg_list(object args: Iterable[types.MessageTypes]):
 
 cpdef void flatten_typespec_into(
     object typespec: types.TypeSpecTypes,
-    array.array into: array.array
+    object into: array.array
 ):
     try:
         into.append(ARGDEF_INT_LOOKUP[typespec])
@@ -536,11 +579,20 @@ cpdef void flatten_typespec_into(
     else:
         return
     if isinstance(typespec, TypeSpec):
-        array.extend(into, typespec.array)
+        IF PYPY:
+            into += typespec.array
+        ELSE:
+            array.extend(into, typespec.array)
     elif isinstance(typespec, array.array):
-        array.extend(into, typespec)
+        IF PYPY:
+            into += typespec
+        ELSE:
+            array.extend(into, typespec)
     elif isinstance(typespec, str):
-        array.extend(into, array.array('b', typespec.encode('utf8')))
+        IF PYPY:
+            into += array.array('b', typespec.encode('utf8'))
+        ELSE:
+            array.extend(into, array.array('b', typespec.encode('utf8')))
     elif typespec in EMPTY_STRINGS:
         pass
     else:

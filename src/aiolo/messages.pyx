@@ -1,8 +1,11 @@
 # cython: language_level=3
 
 from typing import Any
+from libc.stdlib cimport malloc, free
 
-from cpython cimport array
+IF not PYPY:
+    from cpython cimport array
+
 import array
 
 from . import routes, types
@@ -12,7 +15,8 @@ from . cimport addresses, typespecs, lo, timetags
 __all__ = ['Message']
 
 
-cdef array.array MESSAGE_ARRAY_TEMPLATE = array.array('B')
+IF not PYPY:
+    cdef array.array MESSAGE_ARRAY_TEMPLATE = array.array('B')
 
 
 cdef class Message:
@@ -63,37 +67,21 @@ cdef class Message:
             lo.lo_arg** argv = lo.lo_message_get_argv(self.lo_message)
         return (<typespecs.TypeSpec>self.typespec).unpack_args(argv, argc)
 
-    def raw(Message self) -> array.array:
-        cdef:
-            size_t length
-            array.array arr
-            char * path = NULL
-
-        if not self.route.path.matches_any:
-            bpath = self.route.path.as_bytes
-            path = bpath
-
-        length = lo.lo_message_length(self.lo_message, path)
-        arr = array.clone(MESSAGE_ARRAY_TEMPLATE, length, zero=True)
-        lo.lo_message_serialise(self.lo_message, path, <void*>arr.data.as_voidptr, &length)
-        return arr
-    #
-    # @classmethod
-    # def from_raw(cls, route: routes.Route, data: array.array) -> Message:
-    #
-
-# cdef Message lo_message_to_message(object route, lo.lo_message lo_message):
-#     cdef:
-#         size_t length
-#         array.array arr
-#         char * path = NULL
-#
-#     if not route.path.matches_any:
-#         bpath = route.path.as_bytes
-#         path = bpath
-#
-#     length = lo.lo_message_length(lo_message, path)
-#     arr = array.clone(MESSAGE_ARRAY_TEMPLATE, length, zero=True)
-#     lo.lo_message_serialise(lo_message, path, <void*>arr.data.as_voidptr, &length)
-#     return Message.from_raw(route, arr)
-
+    IF PYPY:
+        def raw(Message self) -> array.array:
+            cdef size_t length = lo.lo_message_length(self.lo_message, self.route.path.as_bytes)
+            cdef void* raw = malloc(length)
+            arr = array.array('B')
+            lo.lo_message_serialise(self.lo_message, self.route.path.as_bytes, raw, &length)
+            for i in range(length):
+                arr.append((<char*>raw)[i])
+            try:
+                return arr
+            finally:
+                free(raw)
+    ELSE:
+        def raw(Message self) -> array.array:
+            cdef size_t length = lo.lo_message_length(self.lo_message, self.route.path.as_bytes)
+            cdef array.array arr = array.clone(MESSAGE_ARRAY_TEMPLATE, length, zero=True)
+            lo.lo_message_serialise(self.lo_message, self.route.path.as_bytes, <void*>arr.data.as_voidptr, &length)
+            return arr

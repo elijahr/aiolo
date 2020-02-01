@@ -3,7 +3,9 @@
 import re
 from typing import Union
 
-from cpython cimport array
+IF not PYPY:
+    from cpython cimport array
+
 import array
 
 
@@ -14,7 +16,8 @@ from . cimport abstractspecs
 __all__ = ['Path', 'ANY_PATH']
 
 
-cdef array.array PATH_ARRAY_TEMPLATE = array.array('b')
+IF not PYPY:
+    cdef array.array PATH_ARRAY_TEMPLATE = array.array('b')
 
 
 PATTERN_REGEX = re.compile(r'([#{}[\]!?*,\-^])|(//)')
@@ -24,7 +27,10 @@ ANY_PATH = Path(None)
 
 cdef class Path(abstractspecs.AbstractSpec):
     def __cinit__(self, path: types.PathTypes):
-        self.array = array.copy(PATH_ARRAY_TEMPLATE)
+        IF PYPY:
+            self.array = array.array('b')
+        ELSE:
+            self.array = array.copy(PATH_ARRAY_TEMPLATE)
         self.none = False
 
         if isinstance(path, Path):
@@ -32,9 +38,15 @@ cdef class Path(abstractspecs.AbstractSpec):
             if p.none:
                 self.none = True
             else:
-                array.extend(self.array, p.array)
+                IF PYPY:
+                    self.array += p.array
+                ELSE:
+                    array.extend(self.array, p.array)
         elif isinstance(path, str):
-            array.extend(self.array, array.array('b', path.encode('utf8')))
+            IF PYPY:
+                self.array += array.array('b', path.encode('utf8'))
+            ELSE:
+                array.extend(self.array, array.array('b', path.encode('utf8')))
         elif path is None:
             self.none = True
         else:

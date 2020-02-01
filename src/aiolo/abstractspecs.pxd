@@ -1,8 +1,13 @@
 # cython: language_level=3
 
-from cpython cimport array
+IF not PYPY:
+    from cpython cimport array
+
 import array
 
 cdef class AbstractSpec:
-    cpdef public array.array array
+    IF PYPY:
+        cpdef public object array
+    ELSE:
+        cpdef public array.array array
     cpdef public bint none

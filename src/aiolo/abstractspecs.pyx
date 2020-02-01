@@ -2,7 +2,9 @@
 
 from typing import Union
 
-from cpython cimport array
+IF not PYPY:
+    from cpython cimport array
+
 import array
 
 

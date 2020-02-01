@@ -1,8 +1,11 @@
 # cython: language_level=3
 
 from typing import Iterable, Union, Iterator, Any
+from libc.stdlib cimport malloc, free
 
-from cpython cimport array
+IF not PYPY:
+    from cpython cimport array
+
 import array
 
 from .timetags import TT_IMMEDIATE
@@ -10,7 +13,8 @@ from . import types
 from . cimport lo, messages, paths, timetags
 
 
-cdef array.array BUNDLE_ARRAY_TEMPLATE = array.array('B')
+IF not PYPY:
+    cdef array.array BUNDLE_ARRAY_TEMPLATE = array.array('B')
 
 __all__ = ['Bundle']
 
@@ -95,14 +99,24 @@ cdef class Bundle:
     def __getitem__(Bundle self, item) -> Union[Bundle, messages.Message]:
         return (<Bundle>self).msgs[item]
 
-    def raw(Bundle self) -> array.array:
-        cdef:
-            size_t length
-            array.array arr
-        length = lo.lo_bundle_length(self.lo_bundle)
-        arr = array.clone(BUNDLE_ARRAY_TEMPLATE, length, zero=True)
-        lo.lo_bundle_serialise(self.lo_bundle, <void*>arr.data.as_voidptr, &length)
-        return arr
+    IF PYPY:
+        def raw(Bundle self) -> array.array:
+            cdef size_t length = lo.lo_bundle_length(self.lo_bundle)
+            cdef void* raw = malloc(length)
+            arr = array.array('B')
+            lo.lo_bundle_serialise(self.lo_bundle, raw, &length)
+            for i in range(length):
+                arr.append((<char*>raw)[i])
+            try:
+                return arr
+            finally:
+                free(raw)
+    ELSE:
+        def raw(Bundle self) -> array.array:
+            cdef size_t length = lo.lo_bundle_length(self.lo_bundle)
+            cdef array.array arr = array.clone(BUNDLE_ARRAY_TEMPLATE, length, zero=True)
+            lo.lo_bundle_serialise(self.lo_bundle, <void*>arr.data.as_voidptr, &length)
+            return arr
 
     cpdef object add(Bundle self, msg: types.BundleTypes):
         if isinstance(msg, messages.Message):

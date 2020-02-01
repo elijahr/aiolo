@@ -1,15 +1,19 @@
 
 import glob
 import itertools
-import multiprocessing
 import os
 import subprocess
 import sys
-from distutils.util import get_platform
 
 from setuptools import setup, Extension
 from setuptools.command.build_ext import build_ext as _build_ext
 from setuptools.command.install import install as _install
+
+
+try:
+    import __pypy__
+except ImportError:
+    __pypy__ = None
 
 
 DIR = os.path.dirname(__file__)
@@ -76,6 +80,9 @@ def get_cython_compile_time_env(use_system_liblo=False, defaults=None):
         env['_LO_VERSION'] = get_system_lo_version()
     else:
         env['_LO_VERSION'] = BUNDLED_LO_VERSION
+    env.update({
+        'PYPY': __pypy__ is not None
+    })
     return env
 
 
@@ -272,7 +279,6 @@ setup(
             'pytest',
             'pytest-asyncio',
             'pytest-xdist',
-            'pytest-lazy-fixture',
         ],
         'dev': [
             'uvloop',
@@ -281,8 +287,6 @@ setup(
             'pytest-asyncio',
             'pytest-instafail',
             'pytest-xdist',
-            'pytest-lazy-fixture',
-            'pytest-watch',
         ]
     },
     classifiers=[

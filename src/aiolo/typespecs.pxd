@@ -2,7 +2,9 @@
 
 from typing import Iterable, List
 
-from cpython cimport array
+IF not PYPY:
+    from cpython cimport array
+
 import array
 
 from . import types
@@ -40,13 +42,16 @@ cpdef char LO_NIL
 # Symbol representing the value Infinitum.
 cpdef char LO_INFINITUM
 
-cdef array.array ARGTYPES
-
-cdef array.array ARGTYPES_INTS
-
-cdef array.array ARGTYPES_FLOATS
-
-cdef array.array ARGTYPES_STRINGS
+IF PYPY:
+    cdef object ARGTYPES
+    cdef object ARGTYPES_INTS
+    cdef object ARGTYPES_FLOATS
+    cdef object ARGTYPES_STRINGS
+ELSE:
+    cdef array.array ARGTYPES
+    cdef array.array ARGTYPES_INTS
+    cdef array.array ARGTYPES_FLOATS
+    cdef array.array ARGTYPES_STRINGS
 
 cdef tuple EMPTY_STRINGS
 
@@ -55,11 +60,11 @@ cdef class TypeSpec(abstractspecs.AbstractSpec):
     cdef list unpack_args(self, lo.lo_arg ** argv, int argc)
     cdef lo.lo_message pack_lo_message(self, object args: Iterable[types.MessageTypes]) except NULL
 
-cpdef array.array guess_for_arg_list(object args: Iterable[types.MessageTypes])
+cpdef object guess_for_arg_list(object args: Iterable[types.MessageTypes])
 
 cpdef void flatten_typespec_into(
     object typespec: types.TypeSpecTypes,
-    array.array into: array.array
+    object into: array.array
 )
 
 cpdef void flatten_args_into(object data: Iterable, list into: List)
