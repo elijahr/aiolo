@@ -23,7 +23,7 @@ addons:
 matrix:
   include:
     - os: linux
-      env: DEBIAN_FRONTEND=noninteractive
+      env: DEBIAN_FRONTEND=noninteractive USE_SYSTEM_LIBLO=1
       python: "3.6"
     - os: linux
       env: DEBIAN_FRONTEND=noninteractive
@@ -35,7 +35,7 @@ matrix:
       env: DEBIAN_FRONTEND=noninteractive
       python: "pypy3"
     - os: osx
-      env: CPYTHON_VERSION=3.6.8 PYTHON_PATH=/usr/local/bin/python3.6
+      env: CPYTHON_VERSION=3.6.8 PYTHON_PATH=/usr/local/bin/python3.6 USE_SYSTEM_LIBLO=1
       language: generic
     - os: osx
       env: CPYTHON_VERSION=3.7.6 PYTHON_PATH=/usr/local/bin/python3.7
@@ -75,6 +75,11 @@ install:
 
 script:
   - pipenv run python setup.py build_ext --debug
-  - pipenv run pip install --editable ".[test]"
-  - pipenv run python setup.py install
+  - pipenv run pip install uvloop netifaces pytest pytest-asyncio pytest-xdist pytest-lazy-fixture
+  - |
+      if [ "x$USE_SYSTEM_LIBLO" == "x" ]; then
+        pipenv run python setup.py install
+      else
+        pipenv run python setup.py install --use-system-liblo
+      fi
   - pipenv run pytest --verbose -n 4 test.py

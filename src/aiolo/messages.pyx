@@ -27,6 +27,7 @@ cdef class Message:
             typespec = <typespecs.TypeSpec>route.typespec
 
         self.route = route
+        self.typespec = typespec
         self.lo_message = typespec.pack_lo_message(args)
 
     def __init__(Message self, route: types.RouteTypes, *data):
@@ -58,12 +59,9 @@ cdef class Message:
 
     def unpack(Message self) -> list:
         cdef:
-            int argc
-            lo.lo_arg** argv
-
-        argc = lo.lo_message_get_argc(self.lo_message)
-        argv = lo.lo_message_get_argv(self.lo_message)
-        return (<typespecs.TypeSpec>self.route.typespec).unpack_args(argv, argc)
+            int argc = lo.lo_message_get_argc(self.lo_message)
+            lo.lo_arg** argv = lo.lo_message_get_argv(self.lo_message)
+        return (<typespecs.TypeSpec>self.typespec).unpack_args(argv, argc)
 
     def raw(Message self) -> array.array:
         cdef:

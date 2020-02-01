@@ -14,10 +14,11 @@ import test_data
 from aiolo import MultiCast, AioServer, Address, Message, PROTO_UDP, PROTO_UNIX, TimeTag, FRAC_PER_SEC, \
     NO_ARGS, Route, unix_timestamp_to_osc_timestamp, TT_IMMEDIATE, Sub, MultiCastAddress, Bundle, ANY_PATH, TypeSpec, \
     Subs, StartError, PROTO_DEFAULT, EPOCH_UTC, ANY_ARGS, JAN_1970, ThreadedServer, Midi, PROTO_TCP, INFINITY, \
-    INFINITUM, TIMETAG, MIDI, NIL, FALSE, TRUE, BLOB, STRING, DOUBLE, INT64, Path, LO_VERSION
+    INFINITUM, TIMETAG, MIDI, NIL, FALSE, TRUE, BLOB, STRING, DOUBLE, INT64, Path, \
+    compile_osc_address_pattern
 
 
-CANCEL_TIMEOUT = -1
+CANCEL_TIMEOUT = 6
 
 
 def create_task(coro, cancel_timeout=CANCEL_TIMEOUT):
@@ -111,7 +112,6 @@ async def server(event_loop, unused_tcp_port_factory):
 
 
 @pytest.mark.parametrize('index,expected_factories_length', zip(range(8), [8]*8))
-@pytest.mark.skip
 def test_server_init(index, expected_factories_length, any_server_class, unused_tcp_port):
     """
     Test that servers can be constructed and started with various call patterns.
@@ -200,24 +200,23 @@ async def test_multiple_addresses(any_server):
     assert results == [[0], [1], [2]]
 
 
-
-@pytest.mark.parametrize('init', [
-    "Address(url='osc.tcp://%s:%s' % (ip, unused_tcp_port))",
-    "Address(url='osc.udp://%s:%s' % (ip, unused_tcp_port))",
-    "Address(url='osc.unix:///aiolo-test-%s.osc' % unused_tcp_port)",
-    "Address(proto=PROTO_TCP, host=ip, port=unused_tcp_port)",
-    "Address(proto=PROTO_UDP, host=ip, port=unused_tcp_port)",
-    "Address(proto=PROTO_UNIX, host=ip, port='/tmp/aiolo-test-%s.osc' % unused_tcp_port)",
-])
-def test_address_init(init, ip_interface, unused_tcp_port):
+@pytest.mark.parametrize('index,expected_factories_length', zip(range(6), [6]*6))
+def test_address_init(index, expected_factories_length, ip_interface, unused_tcp_port):
     """
     Test Address initialization and state.
     """
     ip, iface = ip_interface
 
-    address = eval(init)
+    inits = [
+        lambda: Address(url='osc.tcp://%s:%s' % (ip, unused_tcp_port)),
+        lambda: Address(url='osc.udp://%s:%s' % (ip, unused_tcp_port)),
+        lambda: Address(url='osc.unix:///aiolo-test-%s.osc' % unused_tcp_port),
+        lambda: Address(proto=PROTO_TCP, host=ip, port=unused_tcp_port),
+        lambda: Address(proto=PROTO_UDP, host=ip, port=unused_tcp_port),
+        lambda: Address(proto=PROTO_UNIX, host=ip, port='/tmp/aiolo-test-%s.osc' % unused_tcp_port),
+    ]
 
-    print('ADDRESS.PROTO %s' % address.proto)
+    address = inits[index]
 
     if iface is None or address.proto in (PROTO_UNIX, PROTO_DEFAULT):
         with pytest.raises(ValueError):
@@ -437,20 +436,18 @@ async def test_unroute(server):
 @pytest.mark.asyncio
 async def test_bundle(server):
     address = Address(url=server.url)
-    routes = [
-        server.route(path, 's')
-        for path in ('/foo', '/bar', '/baz')
-    ]
-    tasks = asyncio.gather(*[
-        create_task(subscribe(route.sub(), 1))
-        for route in routes
-    ])
+    foo = server.route('/foo', 's')
+    bar = server.route('/bar', 's')
+    baz = server.route('/baz', 's')
+    subs = foo.sub() | bar.sub() | baz.sub()
+    task = create_task(subscribe(subs, 3))
     address.bundle([
-        Message(route, route.path.as_str)
-        for route in routes
+        Message(foo, 'foo'),
+        Message(bar, 'bar'),
+        Message(baz, 'baz'),
     ])
-    results = list(await tasks)
-    assert results == [[['/foo']], [['/bar']], [['/baz']]]
+    results = await task
+    assert results == {foo: [['foo']], bar: [['bar']], baz: [['baz']]}
 
 
 @pytest.mark.asyncio
@@ -533,21 +530,6 @@ def test_bundle_and_message_ops():
     bundle2, bundle1, bundle4, bundle3 = bundles
 
     assert sorted(bundles) == [bundle1, bundle2, bundle3, bundle4]
-#
-#
-# @pytest.mark.parametrize('typespec, data', [
-#
-# ])
-# def test_message_init_invalid(typespec, data):
-#     foo = Route('/foo', typespec)
-#     with pytest.raises(TypeError):
-#         Message(foo, *data)
-#     with pytest.raises(TypeError):
-#         Message(foo, 1.0)
-#     with pytest.raises(TypeError):
-#         Message(foo, Midi(1, 2, 3, 4))
-#     with pytest.raises(TypeError):
-#         Message(foo, TT_IMMEDIATE)
 
 
 def test_message_arglength_mismatch():
@@ -559,22 +541,17 @@ def test_message_arglength_mismatch():
 @pytest.mark.asyncio
 async def test_route_pattern(server):
     address = Address(url=server.url)
-    foo = server.route('/foo', 's')
-    bar = server.route('/bar', 's')
-    tasks = asyncio.gather(
-        create_task(subscribe(foo.sub(), 1)),
-        create_task(subscribe(bar.sub(), 1)),
-    )
-    wildcard = Route('/[a-z]*', 's')
-    address.send(wildcard, ['baz'])
-    results = list(await tasks)
-    assert results == [[['baz']], [['baz']]]
+    foo = server.route('/aaa/foo', 's')
+    bar = server.route('/bbb/foo', 's')
+    sub = foo.sub() | bar.sub()
+    task = create_task(subscribe(sub, 4))
+    address.send(Route('//foo', 's'), ['xpath'])
+    address.send(Route('/{aaa,bbb}/foo', 's'), ['array'])
+    results = await task
+    assert results == {foo: [['xpath'], ['array']], bar: [['xpath'], ['array']]}
 
 
-PATTERN_TESTS = [
-    # These are taken from liblo's testlo.c
-
-    # Test {} pattern
+@pytest.mark.parametrize('path,pattern,expect_match', [
     ('/x1y', '/x{1,10,11}y', True),
     ('/x10y', '/x{1,10,11}y', True),
     ('/x11y', '/x{1,10,11}y', True),
@@ -582,13 +559,16 @@ PATTERN_TESTS = [
     ('/x12y', '/x{1,10,11}y', False),
     ('/x12y', '/x{11}y', False),
     ('/x12y', '/x{12}y', True),
+    ('/x1,2y', r'/x{1\,2}y', True),
+    ('/xy', r'/x{,}y', True),
+    ('/aaa/foo', '/{aaa,bbb}/foo', True),
 
     # Test [] pattern
     ('/x1y', '/x[321]y', True),
     ('/x4y', '/x[321]y', False),
     ('/x2y', '/x[1-3]y', True),
-    ('/x3y', '/x[3-2]y', True),
-    ('/xzy', '/x[3-2z]y', True),
+    ('/x3y', '/x[2-3]y', True),
+    ('/xzy', '/x[2-3z]y', True),
     ('/x1y', '/x[!a-z]y', True),
     ('/x1y', '/x[a-z]y', False),
     ('/xby', '/x[a-z]y', True),
@@ -616,76 +596,22 @@ PATTERN_TESTS = [
     ('/xy/z', '//z', True),
     ('/xy/z/w/u', '///w/u', True),
     ('/xy/z/w/u', '///z/w', False),
-]
 
-
-# Pattern matching of {} does not work correctly in <0.31, see
-# https://github.com/radarsat1/liblo/commit/e1532a8cbbbc98e066deda3d3c27de84dddd8b10
-@pytest.mark.skipif(
-    LO_VERSION < "0.31",
-    reason="liblo < 0.31 has a bug in lo_pattern match that prevents route joins from properly working")
-def test_route_ops_lo_0_31():
-    for string, pattern, expect_match in PATTERN_TESTS:
-        string_path = Path(string)
-        assert not string_path.is_pattern
-        pattern_path = Path(pattern)
-        assert pattern_path.is_pattern
-        with pytest.raises(ValueError):
-            string_path | pattern_path
-        if expect_match:
-            assert string_path in pattern_path
-        else:
-            assert string_path not in pattern_path
-
-
-    # foo = Route('/foo')
-    # bar = Route('/bar')
-    # baz = Route('/baz')
-    # spaz = Route('/spaz')
-    # xxyyxx = Route('/xxyyxx')
-    # route = foo | bar
-    # assert route.is_pattern
-    # assert route.is_simple_pattern
-    # assert foo in route
-    # assert bar in route
-    # assert baz not in route
-    # assert {foo, bar, baz, spaz} not in route
-    # assert {baz, spaz} not in route
-    # route |= baz
-    # route |= spaz
-    # assert baz in route
-    # assert spaz in route
-    # assert {foo, bar, baz, spaz} in route
-    #
-    # with pytest.raises(ValueError):
-    #     # Can't pattern match against non-simple pattern
-    #     assert Route('/f*o') in route
-    #
-    # with pytest.raises(ValueError):
-    #     # Can't pattern match against non-simple pattern
-    #     assert route in Route('/f*o')
-    #
-    # assert route in route
-    #
-    # assert route == foo | bar | baz | spaz
-    # assert route != foo
-    # assert route.is_pattern
-    # assert route.is_simple_pattern
-    #
-    # # add a pattern that should match /xxyyxx
-    # # DOES THIS WORK???????
-    # xxyyxx_wildcard = Route('/*yy*')
-    # route |= xxyyxx_wildcard
-    #
-    # assert xxyyxx in xxyyxx_wildcard
-    # assert xxyyxx in route
-    #
-    # with pytest.raises(ValueError):
-    #     route |= Route('/blob-arg', 'b')
-    #
-    # with pytest.raises(ValueError):
-    #     route |= Route('/no-args', NO_ARGS)
-
+    # Now some more tests for special pattern characters
+    ('/xy/z/w/u?', '///w/u[?]', True),
+    ('/xy/z/w/u?', '///w/u[!?]', False),
+    ('/xy/z/w/u{1,2}', r'///w/u\{1,2\}', True),
+    ('/xy/z/w/u2', r'///w/u\{1,2\}', False),
+    (r'/xy/z/w/u-', r'///w/u[-]', True),
+    (r'/xy/z/w/u-', r'///w/u[\\-]', True),
+    (r'/xy/z/w/ua-', r'///w/u[a-][-]', True),
+])
+def test_compile_osc_address_pattern(path, pattern, expect_match):
+    regex = compile_osc_address_pattern(pattern)
+    if expect_match:
+        assert regex.match(path) is not None
+    else:
+        assert regex.match(path) is None
 
 
 @pytest.mark.parametrize('char', '#{}[]!?*,-^\\'.split())
@@ -806,27 +732,11 @@ def test_path_ops():
     assert foo in foo
     assert foo in ANY_PATH
     assert ANY_PATH not in foo
-    assert ANY_PATH | ANY_PATH == ANY_PATH
-    with pytest.raises(ValueError):
-        foo |= ANY_PATH
-    with pytest.raises(ValueError):
-        ANY_PATH |= foo
-    bar = Path('/bar')
-    assert bar not in foo
-    foo_bar = foo | bar
-    assert foo_bar.is_pattern
-    assert foo_bar.as_str == '{/foo,/bar}'
-    assert foo_bar == foo | bar
-    star = Path('/*')
-    foo_bar_star = foo_bar | star
-    assert foo_bar_star == '{{/foo,/bar},/*}'
-    assert foo in foo_bar_star
-    assert bar in foo_bar_star
-    assert star in foo_bar_star
-    with pytest.raises(ValueError):
-        assert foo_bar in foo_bar_star
-
-
+    barfoo = Path('/bar/foo')
+    pattern = Path('//foo')
+    assert pattern.is_pattern
+    assert barfoo in pattern
+    assert foo in pattern
 
 
 def test_timetag():

@@ -1,8 +1,7 @@
 # cython: language_level=3
-import asyncio
-import logging
+
 import threading
-from typing import Union
+from typing import Union, Generator
 
 from cpython.ref cimport Py_INCREF, Py_DECREF
 
@@ -196,20 +195,28 @@ cdef class AbstractServer:
             raise exceptions.StartError('Timed out waiting for lock')
         try:
             if self.running:
-                raise exceptions.StartError('AioServer already running, cannot start again')
+                raise exceptions.StartError('%r already running, cannot start again' % self)
+
             self.lo_server_start()
+
+            # Add a handler for any path and any args; the handler handles routing in python-land
+            if lo.lo_server_add_method(
+                self.lo_server,
+                NULL,
+                NULL,
+                <lo.lo_method_handler>router,
+                <void*>self
+            ) is NULL:
+                self.stop()
+                raise exceptions.StartError('Could not add default method')
 
             lo.lo_server_enable_queue(self.lo_server, self.queue_enabled, 0)
 
             # Steal a ref for error_context
             Py_INCREF(self)
             lo.lo_server_set_error_context(self.lo_server, <void*>self)
+            IF DEBUG: logs.logger.debug('%r: started', self)
 
-            # Add a handler to log all incoming data
-            IF DEBUG: self.route(routes.ANY_ROUTE)
-
-            for route in self.routing.values():
-                self._add_route(route)
         finally:
             self.startstoplock.release()
 
@@ -218,10 +225,8 @@ cdef class AbstractServer:
             raise exceptions.StopError('Timed out waiting for lock')
         try:
             if not self.running:
-                raise exceptions.StopError('AioServer not started, cannot stop')
+                raise exceptions.StopError('%r not started, cannot stop' % self)
             self.lo_server_stop()
-            for route in self.routing.values():
-                Py_DECREF(route)
             # Unsteal the error_context ref
             Py_DECREF(self)
             IF DEBUG: logs.logger.debug('%r: stopped', self)
@@ -242,15 +247,14 @@ cdef class AbstractServer:
             typespec = typespecs.TypeSpec(typespec)
             route = routes.Route(path, typespec)
 
-        key = repr((path, typespec))
+        key = (path.as_bytes, typespec.as_bytes)
         if key in self.routing:
             # no-op
             return self.routing[key]
         else:
-            if route.is_pattern:
+            if route.is_pattern and not route.matches_any_path:
                 raise exceptions.RouteError('Cannot add pattern route %r as method definition' % route)
-            if self.running:
-                self._add_route(route)
+            IF DEBUG: logs.logger.debug('%r: added route %r' % (self, route))
             self.routing[key] = route
             return route
 
@@ -265,59 +269,28 @@ cdef class AbstractServer:
             typespec = typespecs.TypeSpec(typespec)
             route = routes.Route(path, typespec)
 
-        key = repr((path, typespec))
+        key = (path.as_bytes, typespec.as_bytes)
         if key not in self.routing:
             raise exceptions.RouteError('%r: %r was not routed' % (self, route))
         else:
             del self.routing[key]
-            if self.running:
-                self._del_route(route)
+            IF DEBUG: logs.logger.debug('%r: removed route %r' % (self, route))
         return route
 
-    def _add_route(self, route: routes.Route):
-        path = (<paths.Path>route.path).as_bytes
-        typespec = (<typespecs.TypeSpec>route.typespec).as_bytes
-        cdef:
-            char * p
-            char * a
-        if path is None:
-            p = NULL
+    def match(self, route: types.RouteTypes, typespec: types.TypeSpecTypes = '') -> Generator[routes.Route]:
+        if isinstance(route, routes.Route):
+            if typespec:
+                raise ValueError("Cannot provide route and typespec together")
+            path = <paths.Path>route.path
+            typespec = <typespecs.TypeSpec>route.typespec
         else:
-            p = path
-        if typespec is None:
-            a = NULL
-        else:
-            a = typespec
-        # Steal ref
-        Py_INCREF(route)
-        if lo.lo_server_add_method(
-            self.lo_server,
-            p,
-            a,
-            <lo.lo_method_handler>router,
-            <void*>route
-        ) is NULL:
-            raise exceptions.RouteError('Could not add route %r' % route)
-        IF DEBUG: logs.logger.debug('%r: added route %r with typespec %r' % (self, path, typespec))
+            path = paths.Path(route)
+            typespec = typespecs.TypeSpec(typespec)
+            route = routes.Route(path, typespec)
 
-    def _del_route(self, route: routes.Route):
-        path = (<paths.Path>route.path).as_bytes
-        typespec = (<typespecs.TypeSpec>route.typespec).as_bytes
-        cdef:
-            char * p
-            char * a
-        if path is None:
-            p = NULL
-        else:
-            p = path
-        if typespec is None:
-            a = NULL
-        else:
-            a = typespec
-        lo.lo_server_del_method(self.lo_server, p, a)
-        # Unsteal ref
-        Py_DECREF(route)
-        IF DEBUG: logs.logger.debug('%r: removed route %r' % (self, route))
+        for other in self.routing.values():
+            if route == other or other in route or route in other:
+                yield other
 
     cdef int lo_server_start(self) except -1:
         raise NotImplementedError
@@ -357,22 +330,30 @@ cdef void on_error(int num, const char *m, const char *p) nogil:
 
 
 cdef int router(
-    const char *path,
-    const char *raw_typespec,
+    const char *path_bytes,
+    const char *typespec_bytes,
     lo.lo_arg ** argv,
     int argc,
     lo.lo_message raw_msg,
-    void *_route
+    void *_server
 ) nogil except 1:
     cdef int retval = 0
     cdef lo.lo_timetag lo_timetag
     with gil:
-        route = <object>_route
+        server = <AbstractServer>_server
+        path_str = (<bytes>path_bytes).decode('utf8')
+        typespec_str = (<bytes>typespec_bytes).decode('utf8')
         try:
-            IF DEBUG: logs.logger.debug('%r: unpacking data for path %s with typespec %s (length %s)', route, path, raw_typespec, argc)
-            data = typespecs.TypeSpec(raw_typespec).unpack_args(argv, argc)
-            IF DEBUG: logs.logger.debug('%r: received message %r', route, data)
-            route.pub_soon_threadsafe(data)
+            IF DEBUG: logs.logger.debug('%r: unpacking data for path %r, typespec %r (length %s)', server, path_str, typespec_str, argc)
+            for route in server.match(path_str, typespec_str):
+                if route.matches_any_args:
+                    typespec = <typespecs.TypeSpec>typespecs.TypeSpec(typespec_str)
+                else:
+                    typespec = <typespecs.TypeSpec>route.typespec
+                IF DEBUG: logs.logger.debug('%r: unpacking data for route %r', server, route)
+                data = typespec.unpack_args(argv, argc)
+                IF DEBUG: logs.logger.debug('%r: received message %r', server, data)
+                route.pub_soon_threadsafe(data)
         except BaseException as exc:
             logs.logger.exception(exc)
             retval = 1

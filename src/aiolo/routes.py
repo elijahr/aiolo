@@ -17,9 +17,12 @@ class Route:
         typespec: types.TypeSpecTypes = None,
     ):
         self.subs = []
-        self.path = path
-        self.typespec = typespec
-        self.loop = asyncio.get_event_loop()
+        self.path = path if isinstance(path, paths.Path) else paths.Path(path)
+        self.typespec = typespec if isinstance(typespec, typespecs.TypeSpec) else typespecs.TypeSpec(typespec)
+        try:
+            self.loop = asyncio.get_event_loop()
+        except RuntimeError:
+            self.loop = None
 
     def __repr__(self):
         return 'Route(%s, %s)' % (self.path.simplerepr, self.typespec.simplerepr)
@@ -34,10 +37,10 @@ class Route:
             routes = other
         if not all(isinstance(r, Route) for r in routes):
             raise TypeError('Invalid value for Route.__contains__: %s' % repr(routes))
-        if self.matches_any_path or {r.path for r in routes} in self.path:
+        if self.matches_any_path or all(r.path in self.path for r in routes):
             if self.matches_any_args or all(self.typespec == r.typespec for r in routes):
                 return True
-        return True
+        return False
 
     def __eq__(self, other: 'Route') -> bool:
         if not isinstance(other, Route):
@@ -49,20 +52,9 @@ class Route:
             raise TypeError('Invalid value for Route.__lt__: %s' % repr(other))
         return self.path < other.path and self.typespec < other.typespec
 
-    def __or__(self, other: 'Route') -> 'Route':
-        if self.typespec != other.typespec:
-            raise ValueError('Cannot join routes with mismatched typespecs (%r != %r)' % (
-                self.typespec, other.typespec))
-        path = self.path | other.path
-        return self.__class__(path, self.typespec)
-
     @property
     def is_pattern(self) -> bool:
         return self.path.is_pattern
-
-    @property
-    def is_simple_pattern(self) -> bool:
-        return self.path.is_simple_pattern
 
     @property
     def matches_any(self):
@@ -81,6 +73,8 @@ class Route:
         return self.typespec.matches_no
 
     def pub_soon_threadsafe(self, item: types.PubTypes):
+        if self.loop is None:
+            raise RuntimeError('Cannot call pub_soon_threadsafe() on a Route which was not constructed in a running event loop')
         self.loop.call_soon_threadsafe(self.pub_nowait, item)
 
     def pub_nowait(self, item: types.PubTypes):
@@ -230,7 +224,7 @@ class Subs(collections.abc.AsyncIterator):
         return self
 
     async def __anext__(self) -> Tuple[Route, types.PubTypes]:
-        logs.debug('%r: waiting for next item in types.PubTypes inbox...', self)
+        logs.debug('%r: waiting for next item in inbox...', self)
         if not self._buffer:
             done, _ = await asyncio.wait([
                 asyncio.ensure_future(sub.__anext__(as_tuple=True))
@@ -241,7 +235,7 @@ class Subs(collections.abc.AsyncIterator):
         msg = await self._buffer.pop(0)
         # this sleep wakes up the loop
         # TODO: is this really true/necessary?
-        await asyncio.sleep(1/33)
+        await asyncio.sleep(1e-32)
         logs.debug('%r: got item from inbox %r', self, msg)
         return msg
 

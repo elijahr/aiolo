@@ -12,6 +12,7 @@ from . import messages
 from . import midis
 from . import multicasts
 from . import multicastaddresses
+from . import patterns
 from . import paths
 from . import protos
 from . import routes
@@ -34,6 +35,7 @@ __all__ = \
     + midis.__all__ \
     + multicasts.__all__ \
     + multicastaddresses.__all__ \
+    + patterns.__all__ \
     + paths.__all__ \
     + protos.__all__ \
     + routes.__all__ \
@@ -55,6 +57,7 @@ from .messages import *
 from .midis import *
 from .multicasts import *
 from .multicastaddresses import *
+from .patterns import *
 from .paths import *
 from .protos import *
 from .routes import *

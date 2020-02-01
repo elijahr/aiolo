@@ -219,9 +219,6 @@ cdef extern from "lo/lo.h" nogil:
 
     lo_server lo_server_new_multicast(char* group, char* port, lo_err_handler err_h)
 
-    # Added in 0.30, but current homebrew
-    lo_server lo_server_new_multicast_iface(char* group, char* port, char* iface, char* ip, lo_err_handler err_h)
-
     lo_server lo_server_new_from_url(char* url, lo_err_handler err_h)
 
     int lo_server_enable_coercion(lo_server server, int enable)
@@ -364,20 +361,17 @@ cdef extern from "lo/lo.h" nogil:
 
     void lo_version(char* verstr, int verstr_size, int* major, int* minor, char* extra, int extra_size, int* lt_major, int* lt_minor, int* lt_bug)
 
+    void * lo_error_get_context()
+
     IF _LO_VERSION >= "0.30":
 
-        void *lo_error_get_context(void)
+        lo_server lo_server_new_multicast_iface(char* group, char* port, char* iface, char* ip, lo_err_handler err_h)
 
         lo_server_thread lo_server_thread_new_multicast_iface(char* group, char* port, char* iface, char* ip, lo_err_handler err_h)
 
         int lo_servers_wait(lo_server* s, int* status, int num_servers, int timeout)
 
         int lo_servers_recv_noblock(lo_server* s, int* recvd, int num_servers, int timeout)
-
-    ELSE:
-
-        void * lo_error_get_context()
-
 
 
 ctypedef struct lo_address_header:

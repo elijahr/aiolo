@@ -1,14 +1,22 @@
 
 
 __all__ = [
-    'AIOLoError', 'Unsubscribed', 'StartError', 'StopError', 'SendError', 'RouteError']
+    'AIOLoError', 'PathSyntaxError', 'RouteError', 'SendError', 'StartError', 'StopError', 'Unsubscribed']
 
 
 class AIOLoError(Exception):
     pass
 
 
-class Unsubscribed(AIOLoError):
+class PathSyntaxError(AIOLoError):
+    pass
+
+
+class RouteError(AIOLoError):
+    pass
+
+
+class SendError(AIOLoError):
     pass
 
 
@@ -20,9 +28,5 @@ class StopError(AIOLoError):
     pass
 
 
-class SendError(AIOLoError):
-    pass
-
-
-class RouteError(AIOLoError):
+class Unsubscribed(AIOLoError):
     pass

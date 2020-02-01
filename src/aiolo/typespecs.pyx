@@ -367,7 +367,6 @@ cdef class TypeSpec(abstractspecs.AbstractSpec):
             i += 1
         return data
 
-
     cdef lo.lo_message pack_lo_message(self, object args: Iterable[types.MessageTypes]) except NULL:
         cdef:
             array.array typespec_array = self.array
@@ -385,7 +384,7 @@ cdef class TypeSpec(abstractspecs.AbstractSpec):
         if len(typespec_array) != len(args):
             raise ValueError(
                 'Argument length does not match typespec %r (length %s), got %r (length %s)' % (
-                    typespec_array, len(typespec_array), args, len(args)))
+                    self.as_str, len(typespec_array), args, len(args)))
 
         lo_message = lo.lo_message_new()
         if lo_message is NULL:

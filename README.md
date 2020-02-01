@@ -5,14 +5,15 @@ asyncio-friendly Python bindings for [liblo](http://liblo.sourceforge.net/), an 
 
 ## Installation
 
-OS X: `brew install liblo`
-
-Ubuntu: `apt-get install liblo7 liblo-dev`
-
-Then:
 ```shell
 pip install aiolo
 ```
+
+By default, aiolo will install alongside a [fork of liblo]() containing unreleased bugfixes. To use system liblo installed via apt or homebrew, install aiolo with:
+
+```shell
+pip install aiolo --use-system-liblo
+``` 
 
 ## Examples
 

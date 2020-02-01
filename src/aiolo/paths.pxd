@@ -3,7 +3,4 @@
 from . cimport abstractspecs
 
 cdef class Path(abstractspecs.AbstractSpec):
-    pass
-
-
-cpdef bint pattern_match(string, pattern)
+    cpdef public object pattern
