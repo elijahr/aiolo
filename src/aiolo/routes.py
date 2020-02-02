@@ -125,7 +125,7 @@ class Sub(collections.abc.AsyncIterator):
         if isinstance(other, Sub):
             return self.route < other.route
         elif isinstance(other, Subs):
-            return hash(self.route) < hash(other)
+            return Subs(self) < other
         else:
             raise TypeError('Invalid value for Sub.__lt__: %s' % repr(other))
 
