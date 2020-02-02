@@ -27,7 +27,7 @@ import logging
 import multiprocessing
 import sys
 
-from aiolo import logger, Address, Bundle, Message, AioServer, ANY_ARGS, NO_ARGS, Midi
+from aiolo import logger, Address, Message, Midi, Server
 
 
 def pub():
@@ -35,28 +35,12 @@ def pub():
 
     now = datetime.datetime.now(datetime.timezone.utc)
 
-    print(f'{address}: sending messages...')
-    for i in range(3):
-        address.send('/foo', i, float(i), Midi(i, i, i, i))
-        # alternatively, same behavior
-        # address.send(Route('/foo', 'hdm'), 1, 2.0, Midi(1, 2, 3, 4))
-        address.send('/bar', 'hello', 'world')
-
     # Send some delayed data; the server will receive it immediately but enqueue it for processing
     # at the specified bundle timetag
-    bundle = Bundle()
-    for i in range(3):
-        bundle.add_bundle(Bundle([
-            Message('/foo', i*10, float(i*10), Midi(i*10, i*10, i*10, i*10)),
-        ], timetag=now + datetime.timedelta(seconds=i/4)))
+    for i in range(5):
+        address.delay(now + datetime.timedelta(seconds=i), Message('/foo', i, float(i), Midi(i, i, i, i)))
 
-    # send the bundle
-    print(f'{address}: sending bundle {bundle}')
-    address.bundle(bundle)
-
-    # exit in 1 second
-    print(f'{address}: notifying subscription to exit...')
-    address.send('/exit')
+    address.delay(now + datetime.timedelta(seconds=6), Message('/exit'))
 
 
 async def main(verbose):
@@ -66,25 +50,17 @@ async def main(verbose):
         logger.addHandler(h)
         logger.setLevel(logging.DEBUG)
 
-    server = AioServer(url='osc.tcp://:10001')
+    server = Server(url='osc.tcp://:10001')
     server.start()
 
     # Create endpoints
 
     # /foo accepts an int, a float, and MIDI data
     foo = server.route('/foo', [int, float, Midi])
-
-    # alternatively, same behavior:
-    # foo = server.route('/foo', 'hdm')  # liblo syntax: h=64 bit int, d=double precision float, m=MIDI
-
-    # /bar accepts any arguments
-    bar = server.route('/bar', ANY_ARGS)
-
-    # /exit accepts no arguments
-    exit = server.route('/exit', NO_ARGS)
+    exit = server.route('/exit')
 
     # Subscribe to messages for any of the routes
-    subscriptions = foo.sub() | bar.sub() | exit.sub()
+    subscriptions = foo.sub() | exit.sub()
 
     # Send data from another process
     proc = multiprocessing.Process(target=pub)
@@ -92,7 +68,7 @@ async def main(verbose):
     proc.join()
 
     async for route, data in subscriptions:
-        print(f'{str(route.path)}: received {data}')
+        print(f'echo_server: {str(route.path)} received {data}')
         if route == exit:
             # Unsubscribing isn't necessary but is good practice
             await subscriptions.unsub()
@@ -112,7 +88,7 @@ if __name__ == '__main__':
 import asyncio
 import random
 
-from aiolo import MultiCast, MultiCastAddress, Route, AioServer
+from aiolo import MultiCast, MultiCastAddress, Route, Server
 
 
 async def sub(foo):
@@ -144,7 +120,7 @@ async def main():
     # Create a cluster of servers in the same multicast group
     cluster = []
     for i in range(10):
-        server = AioServer(multicast=multicast)
+        server = Server(multicast=multicast)
         # Have them all handle the same route
         server.route(foo)
         server.start()
@@ -184,8 +160,10 @@ Pull requests are welcome, please file any issues you encounter.
 
 ## Changelog
 
-### 3.1.1
+### 4.0.0
 
+* Support bundling a newer liblo via `python setup.py --use-bundled-liblo`
+* Use Python-based OSC address pattern matching rather than liblo's, supports escaped special characters
 * Ensure ThreadedServer.start() waits for thread to be initialized
+* Fix bug where subscribers might not receive pending data
 * Fix bug where loop.remove_reader() was not being called on AioServer.stop()
-* Parallelized unit tests with pytest-xdist

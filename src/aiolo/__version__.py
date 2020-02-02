@@ -1,6 +1,6 @@
 
 __title__ = 'aiolo'
-__version__ = '3.2.0'
+__version__ = '4.0.0'
 __description__ = 'asyncio-friendly Python bindings for liblo'
 __url__ = 'https://github.com/elijahr/aiolo'
 __author__ = 'Elijah Shaw-Rutschman'

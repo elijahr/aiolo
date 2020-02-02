@@ -1,14 +1,10 @@
-"""
-Hammer a server with data
-"""
-
 import asyncio
 import datetime
 import logging
 import multiprocessing
 import sys
 
-from aiolo import logger, Address, Message, Midi, Server, NO_ARGS
+from aiolo import logger, Address, Message, Midi, Server
 
 
 def pub():
@@ -19,13 +15,9 @@ def pub():
     # Send some delayed data; the server will receive it immediately but enqueue it for processing
     # at the specified bundle timetag
     for i in range(5):
-        address.bundle([
-            Message('/foo', i, float(i), Midi(i, i, i, i)),
-        ], timetag=now + datetime.timedelta(seconds=i))
+        address.delay(now + datetime.timedelta(seconds=i), Message('/foo', i, float(i), Midi(i, i, i, i)))
 
-    address.bundle([
-        Message('/exit'),
-    ], timetag=now + datetime.timedelta(seconds=6))
+    address.delay(now + datetime.timedelta(seconds=6), Message('/exit'))
 
 
 async def main(verbose):

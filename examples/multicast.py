@@ -1,7 +1,7 @@
 import asyncio
 import random
 
-from aiolo import MultiCast, MultiCastAddress, Route, AioServer
+from aiolo import MultiCast, MultiCastAddress, Route, Server
 
 
 async def sub(foo):
@@ -33,7 +33,7 @@ async def main():
     # Create a cluster of servers in the same multicast group
     cluster = []
     for i in range(10):
-        server = AioServer(multicast=multicast)
+        server = Server(multicast=multicast)
         # Have them all handle the same route
         server.route(foo)
         server.start()
