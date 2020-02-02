@@ -28,7 +28,7 @@ class Route:
         return 'Route(%s, %s)' % (self.path.simplerepr, self.typespec.simplerepr)
 
     def __hash__(self):
-        return hash('Route:%s,%s' % (hash(self.path), hash(self.typespec)))
+        return hash(repr(self))
 
     def __contains__(self, other: Union['Route', Iterable['Route']]) -> bool:
         if isinstance(other, Route):
@@ -111,7 +111,7 @@ class Sub(collections.abc.AsyncIterator):
         return 'Sub(%r)' % self.route
 
     def __hash__(self):
-        return hash('Sub:%s' % hash(self.route))
+        return hash(repr(self))
 
     def __eq__(self, other: Union['Sub', 'Subs']) -> bool:
         if isinstance(other, Sub):
@@ -190,7 +190,7 @@ class Subs(collections.abc.AsyncIterator):
         return len(self._subs)
 
     def __hash__(self):
-        return hash('Subs:' + ('|'.join([str(hash(s)) for s in sorted(self._subs)])))
+        return hash(repr(self))
 
     def __eq__(self, other: Union['Sub', 'Subs']) -> bool:
         if isinstance(other, Sub):
@@ -198,6 +198,13 @@ class Subs(collections.abc.AsyncIterator):
         if not isinstance(other, Subs):
             raise TypeError('Invalid value for Subs.__eq__: %s' % repr(other))
         return hash(self) == hash(other)
+
+    def __lt__(self, other: Union['Sub', 'Subs']) -> bool:
+        if isinstance(other, Sub):
+            other = Subs(other)
+        if not isinstance(other, Subs):
+            raise TypeError('Invalid value for Subs.__eq__: %s' % repr(other))
+        return repr(self) < repr(other)
 
     def __contains__(self, other: Union['Sub', 'Subs', Route]) -> bool:
         if isinstance(other, Route):
