@@ -1,6 +1,6 @@
 import asyncio
 import collections.abc
-from typing import Union, Tuple, Iterable, Iterator, List
+from typing import Union, Tuple, Iterable, Iterator, List, Awaitable
 
 from . import typespecs, exceptions, logs, paths, types
 
@@ -72,18 +72,19 @@ class Route:
     def matches_no_args(self):
         return self.typespec.matches_no
 
-    def pub_soon_threadsafe(self, item: types.PubTypes):
+    def pub_soon_threadsafe(self, items: Iterable[types.PubTypes]):
         if self.loop is None:
-            raise RuntimeError('Cannot call pub_soon_threadsafe() on a Route which was not constructed in a running event loop')
-        self.loop.call_soon_threadsafe(self.pub_nowait, item)
+            raise RuntimeError('Cannot call pub_soon_threadsafe() on a Route which was not constructed in a running '
+                               'event loop')
+        self.loop.call_soon_threadsafe(self.pub_nowait, items)
 
-    def pub_nowait(self, item: types.PubTypes):
+    def pub_nowait(self, items: Iterable[types.PubTypes]):
         for s in self.subs:
-            s.pub_nowait(item)
+            s.pub_nowait(items)
 
-    async def pub(self, item: types.PubTypes):
+    async def pub(self, items: Iterable[types.PubTypes]):
         await asyncio.gather(*[
-            s.pub(item)
+            s.pub(items)
             for s in self.subs
         ])
 
@@ -148,33 +149,27 @@ class Sub(collections.abc.AsyncIterator):
     def __aiter__(self) -> 'Sub':
         return self
 
-    async def __anext__(self, as_tuple: bool = False) -> Union[List[types.PubTypes], Tuple[Route, List[types.PubTypes]]]:
-        got_task = False
-        try:
-            logs.debug('%r: waiting for next item in inbox...', self)
-            msg = await self.inbox.get()
-            got_task = True
-            logs.debug('%r: got item from inbox %r', self, msg)
-            if isinstance(msg, Exception):
-                raise msg
-        except (exceptions.Unsubscribed, GeneratorExit):
+    async def __anext__(
+        self,
+        as_tuple: bool = False
+    ) -> Union[List[types.PubTypes], Tuple[Route, List[types.PubTypes]]]:
+        logs.debug('%r: waiting for next item in inbox...', self)
+        msg = await self.inbox.get()
+        self.inbox.task_done()
+        logs.debug('%r: got item from inbox %r', self, msg)
+        if isinstance(msg, exceptions.Unsubscribed):
             raise StopAsyncIteration
-        else:
-            if as_tuple:
-                return self.route, msg
-            return msg
-        finally:
-            # await asyncio.sleep(1e-32)
-            if got_task:
-                self.inbox.task_done()
+        if as_tuple:
+            return self.route, msg
+        return msg
 
-    def pub_nowait(self, item: types.PubTypes):
-        logs.debug('%r: publishing %r', self, item)
-        self.inbox.put_nowait(item)
+    def pub_nowait(self, items: Iterable[types.PubTypes]):
+        logs.debug('%r: publishing %r', self, items)
+        self.inbox.put_nowait(items)
 
-    async def pub(self, item: types.PubTypes):
-        logs.debug('%r: publishing %r', self, item)
-        await self.inbox.put(item)
+    async def pub(self, items: Iterable[types.PubTypes]):
+        logs.debug('%r: publishing %r', self, items)
+        await self.inbox.put(items)
 
     async def unsub(self):
         await self.route.unsub(self)
@@ -228,14 +223,13 @@ class Subs(collections.abc.AsyncIterator):
             sub_set |= other._subs
         return self.__class__(*tuple(sub_set))
 
-    def __iter__(self, item) -> Iterator[Sub]:
+    def __iter__(self) -> Iterator[Sub]:
         return iter(self._subs)
 
     def __aiter__(self) -> 'Subs':
         return self
 
     async def __anext__(self) -> Tuple[Route, List[types.PubTypes]]:
-        logs.debug('%r: waiting for next item in inbox...', self)
         if not self._pending:
             self._pending |= {
                 asyncio.ensure_future(sub.__anext__(as_tuple=True))
@@ -244,17 +238,15 @@ class Subs(collections.abc.AsyncIterator):
         done, pending = await asyncio.wait(self._done | self._pending, return_when=asyncio.FIRST_COMPLETED)
         self._pending -= done
         self._done |= done
-        route, data = await self._done.pop()
-        logs.debug('%r: got item from inbox %r: %r', self, route, data)
-        return route, data
+        return await self._done.pop()
 
-    def pub_nowait(self, item: types.PubTypes):
+    def pub_nowait(self, items: Iterable[types.PubTypes]):
         for s in self._subs:
-            s.pub_nowait(item)
+            s.pub_nowait(items)
 
-    async def pub(self, item: types.PubTypes):
+    async def pub(self, items: Iterable[types.PubTypes]):
         await asyncio.gather(*[
-            s.pub(item)
+            s.pub(items)
             for s in self._subs
         ])
 

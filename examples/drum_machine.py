@@ -73,7 +73,7 @@ DRUM_ROUTES = (KICK, C_HAT, O_HAT, SNARE, CLAP, COWBELL, AIRHORN)
 
 
 WAVS_BY_ROUTE = {
-    route: os.path.join(PATH, 'drums%s.wav' % route.path)
+    route: os.path.join(PATH, 'drums%s.wav' % route.path.as_str)
     for route in DRUM_ROUTES
 }
 

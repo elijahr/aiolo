@@ -197,6 +197,20 @@ def test_server_init_error(server_init_error_factory):
 
 
 @pytest.mark.asyncio
+async def test_subs_unsub(event_loop):
+    foo = Sub(Route('/foo', ANY_ARGS))
+    bar = Sub(Route('/bar', ANY_ARGS))
+    subs = foo | bar
+    task = create_task(subscribe(subs, 3))
+    await foo.pub('1')
+    await bar.pub('2')
+    await bar.unsub()
+    await foo.pub('3')
+    results = await task
+    assert_results(results, {bar.route: ['2'], foo.route: ['1', '3']})
+
+
+@pytest.mark.asyncio
 async def test_multiple_addresses(any_server):
     """
     Test that multiple clients can send data to a single server
