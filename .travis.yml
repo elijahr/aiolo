@@ -52,14 +52,14 @@ install:
   - |
     case $TRAVIS_OS_NAME in
       linux)
-        if [ "x$USE_BUNDLED_LIBLO" == "x1" ]; then
+        if [ "x$USE_BUNDLED_LIBLO" == "x" ]; then
           sudo apt-get install liblo7 liblo-dev;
         fi
         sudo pip install pipenv;
         pipenv install --python `which python` --skip-lock;
         ;;
       osx)
-        if [ "x$USE_BUNDLED_LIBLO" == "x1" ]; then
+        if [ "x$USE_BUNDLED_LIBLO" == "x" ]; then
           brew update;
           brew install liblo;
         fi
