@@ -8,7 +8,7 @@ import logging
 import multiprocessing
 import sys
 
-from aiolo import logger, Address, Message, AioServer, NO_ARGS
+from aiolo import logger, Address, Message, Midi, Server, NO_ARGS
 
 
 def pub():
@@ -18,14 +18,14 @@ def pub():
 
     # Send some delayed data; the server will receive it immediately but enqueue it for processing
     # at the specified bundle timetag
-    for i in range(10000):
+    for i in range(5):
         address.bundle([
-            Message('/foo', bytearray([0]*10000)),
-        ], timetag=now + datetime.timedelta(microseconds=i))
+            Message('/foo', i, float(i), Midi(i, i, i, i)),
+        ], timetag=now + datetime.timedelta(seconds=i))
 
     address.bundle([
         Message('/exit'),
-    ], timetag=now + datetime.timedelta(seconds=10000))
+    ], timetag=now + datetime.timedelta(seconds=6))
 
 
 async def main(verbose):
@@ -35,17 +35,17 @@ async def main(verbose):
         logger.addHandler(h)
         logger.setLevel(logging.DEBUG)
 
-    server = AioServer(url='osc.tcp://:10001')
+    server = Server(url='osc.tcp://:10001')
     server.start()
 
     # Create endpoints
 
     # /foo accepts an int, a float, and MIDI data
-    foo = server.route('/foo', bytearray)
-    foo = server.route('/exit', NO_ARGS)
+    foo = server.route('/foo', [int, float, Midi])
+    exit = server.route('/exit')
 
     # Subscribe to messages for any of the routes
-    subscriptions =  foo.sub() | exit.sub()
+    subscriptions = foo.sub() | exit.sub()
 
     # Send data from another process
     proc = multiprocessing.Process(target=pub)
@@ -53,7 +53,7 @@ async def main(verbose):
     proc.join()
 
     async for route, data in subscriptions:
-        print(f'{str(route.path)}: received {data}')
+        print(f'echo_server: {str(route.path)} received {data}')
         if route == exit:
             # Unsubscribing isn't necessary but is good practice
             await subscriptions.unsub()

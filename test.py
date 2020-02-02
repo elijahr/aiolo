@@ -474,7 +474,7 @@ async def test_bundle(server):
         Message(baz, 'baz'),
     ])
     results = await task
-    assert results == {foo: [['foo']], bar: [['bar']], baz: [['baz']]}
+    assert_results(results, {foo: [['foo']], bar: [['bar']], baz: [['baz']]})
 
 
 @pytest.mark.asyncio
@@ -575,7 +575,7 @@ async def test_route_pattern(server):
     address.send(Route('//foo', 's'), ['xpath'])
     address.send(Route('/{aaa,bbb}/foo', 's'), ['array'])
     results = await task
-    assert results == {foo: [['xpath'], ['array']], bar: [['xpath'], ['array']]}
+    assert_results(results, {foo: [['xpath'], ['array']], bar: [['xpath'], ['array']]})
 
 
 @pytest.mark.parametrize('path,pattern,expect_match', [
@@ -717,11 +717,11 @@ async def test_sub_join(server):
             address.send(route, d)
 
     results = await task
-    assert results == {
+    assert_results(results, {
         foo: [['foo1'], ['foo2']],
         bar: [['bar1'], ['bar2']],
         baz: [['baz1'], ['baz2']],
-    }
+    })
 
 
 def test_typespec_ops():
@@ -840,6 +840,13 @@ def test_timetag():
         # frac precision is not lost when comparing to tuple or timetag
         assert tt + 0.1 != tt
         assert tt + 0.1 != tuple(tt)
+
+
+def assert_results(results_dict, expected):
+    assert set(results_dict.keys()) == set(expected.keys())
+    for route, results in expected.items():
+        for result in results:
+            assert result in results_dict[route]
 
 
 async def subscribe(sub: Union[Sub, Subs], count: int):

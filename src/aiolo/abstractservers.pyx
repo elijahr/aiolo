@@ -1,7 +1,7 @@
 # cython: language_level=3
-
+import functools
 import threading
-from typing import Union, Generator
+from typing import Union, Generator, Set
 
 from cpython.ref cimport Py_INCREF, Py_DECREF
 
@@ -256,6 +256,7 @@ cdef class AbstractServer:
                 raise exceptions.RouteError('Cannot add pattern route %r as method definition' % route)
             IF DEBUG: logs.logger.debug('%r: added route %r' % (self, route))
             self.routing[key] = route
+            self.match.cache_clear()
             return route
 
     def unroute(self, route: types.RouteTypes, typespec: types.TypeSpecTypes = '') -> routes.Route:
@@ -274,23 +275,27 @@ cdef class AbstractServer:
             raise exceptions.RouteError('%r: %r was not routed' % (self, route))
         else:
             del self.routing[key]
+            self.match.cache_clear()
             IF DEBUG: logs.logger.debug('%r: removed route %r' % (self, route))
         return route
 
-    def match(self, route: types.RouteTypes, typespec: types.TypeSpecTypes = '') -> Generator[routes.Route]:
+    @functools.lru_cache(maxsize=None)
+    def match(self, route: types.RouteTypes, typespec: types.TypeSpecTypes = '') -> Set[routes.Route]:
         if isinstance(route, routes.Route):
             if typespec:
                 raise ValueError("Cannot provide route and typespec together")
-            path = <paths.Path>route.path
-            typespec = <typespecs.TypeSpec>route.typespec
         else:
-            path = paths.Path(route)
-            typespec = typespecs.TypeSpec(typespec)
-            route = routes.Route(path, typespec)
-
+            route = routes.Route(route, typespec)
+        matches = set()
         for other in self.routing.values():
             if route == other or other in route or route in other:
-                yield other
+                matches.add(other)
+        IF DEBUG:
+            if matches:
+                logs.logger.debug('%r: found matches %r for %r' % (self, matches, route))
+        if not matches:
+            logs.logger.warning('%r: no matches found for %s' % (self, route))
+        return matches
 
     cdef int lo_server_start(self) except -1:
         raise NotImplementedError

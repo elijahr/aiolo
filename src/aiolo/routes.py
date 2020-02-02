@@ -1,6 +1,6 @@
 import asyncio
 import collections.abc
-from typing import Union, Tuple, Iterable, Iterator
+from typing import Union, Tuple, Iterable, Iterator, List
 
 from . import typespecs, exceptions, logs, paths, types
 
@@ -148,12 +148,13 @@ class Sub(collections.abc.AsyncIterator):
     def __aiter__(self) -> 'Sub':
         return self
 
-    async def __anext__(self, as_tuple: bool = False) -> Union[types.PubTypes, Tuple[Route, types.PubTypes]]:
+    async def __anext__(self, as_tuple: bool = False) -> Union[List[types.PubTypes], Tuple[Route, List[types.PubTypes]]]:
+        got_task = False
         try:
             logs.debug('%r: waiting for next item in inbox...', self)
             msg = await self.inbox.get()
+            got_task = True
             logs.debug('%r: got item from inbox %r', self, msg)
-            self.inbox.task_done()
             if isinstance(msg, Exception):
                 raise msg
         except (exceptions.Unsubscribed, GeneratorExit):
@@ -162,6 +163,10 @@ class Sub(collections.abc.AsyncIterator):
             if as_tuple:
                 return self.route, msg
             return msg
+        finally:
+            # await asyncio.sleep(1e-32)
+            if got_task:
+                self.inbox.task_done()
 
     def pub_nowait(self, item: types.PubTypes):
         logs.debug('%r: publishing %r', self, item)
@@ -176,11 +181,12 @@ class Sub(collections.abc.AsyncIterator):
 
 
 class Subs(collections.abc.AsyncIterator):
-    __slots__ = ('_subs', '_buffer')
+    __slots__ = ('_subs', '_done', '_pending')
 
     def __init__(self, *subs: Sub):
         self._subs = set(subs)
-        self._buffer = []
+        self._done = set()
+        self._pending = set()
 
     def __repr__(self):
         return 'Subs(%s)' % ', '.join([repr(s) for s in sorted(self._subs)])
@@ -228,21 +234,19 @@ class Subs(collections.abc.AsyncIterator):
     def __aiter__(self) -> 'Subs':
         return self
 
-    async def __anext__(self) -> Tuple[Route, types.PubTypes]:
+    async def __anext__(self) -> Tuple[Route, List[types.PubTypes]]:
         logs.debug('%r: waiting for next item in inbox...', self)
-        if not self._buffer:
-            done, _ = await asyncio.wait([
+        if not self._pending:
+            self._pending |= {
                 asyncio.ensure_future(sub.__anext__(as_tuple=True))
                 for sub in self._subs
-            ], return_when=asyncio.FIRST_COMPLETED)
-            for task in done:
-                self._buffer.append(task)
-        msg = await self._buffer.pop(0)
-        # this sleep wakes up the loop
-        # TODO: is this really true/necessary?
-        await asyncio.sleep(1e-32)
-        logs.debug('%r: got item from inbox %r', self, msg)
-        return msg
+            }
+        done, pending = await asyncio.wait(self._done | self._pending, return_when=asyncio.FIRST_COMPLETED)
+        self._pending -= done
+        self._done |= done
+        route, data = await self._done.pop()
+        logs.debug('%r: got item from inbox %r: %r', self, route, data)
+        return route, data
 
     def pub_nowait(self, item: types.PubTypes):
         for s in self._subs:
