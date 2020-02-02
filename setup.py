@@ -21,9 +21,8 @@ DIR = os.path.dirname(__file__)
 LIBLO_DIR = os.path.join(DIR, 'liblo')
 
 # Version of liblo optionally compiled and included with this Python package,
-# By default this is what aiolo uses. To use a system-installed liblo, run:
-#       python setup.py build_ext --use-system-liblo
-#       python setup.py install
+# To use a bundled liblo, run:
+#       python setup.py install --use-bundled-liblo
 BUNDLED_LO_VERSION = '0.31'
 
 # At the time of this writing, homebrew and ubuntu are using 0.29
@@ -74,12 +73,12 @@ def get_system_lo_version():
         return output.strip().decode('utf8') or DEFAULT_SYSTEM_LO_VERSION
 
 
-def get_cython_compile_time_env(use_system_liblo=False, defaults=None):
+def get_cython_compile_time_env(use_bundled_liblo=False, defaults=None):
     env = dict(**defaults or {})
-    if use_system_liblo:
-        env['_LO_VERSION'] = get_system_lo_version()
-    else:
+    if use_bundled_liblo:
         env['_LO_VERSION'] = BUNDLED_LO_VERSION
+    else:
+        env['_LO_VERSION'] = get_system_lo_version()
     env.update({
         'PYPY': __pypy__ is not None
     })
@@ -88,13 +87,14 @@ def get_cython_compile_time_env(use_system_liblo=False, defaults=None):
 
 class build_ext(_build_ext):
     user_options = _build_ext.user_options + [
-        ('use-system-liblo', None, 'Link to system-installed liblo shared library'),
+        ('use-bundled-liblo', None, 'Install a bundled version of liblo with this package'),
     ]
-    boolean_options = _build_ext.boolean_options + ['use-system-liblo']
+    boolean_options = _build_ext.boolean_options + ['use-bundled-liblo']
 
     def initialize_options(self):
         super(build_ext, self).initialize_options()
-        self.use_system_liblo = IS_WINDOWS or ('--use-system-liblo' in sys.argv)
+        self.use_bundled_liblo = '--use-bundled-liblo' in sys.argv
+        self.debug = '--debug' in sys.argv
 
     def finalize_options(self):
         from Cython.Build.Dependencies import cythonize
@@ -104,7 +104,7 @@ class build_ext(_build_ext):
             os.remove(item)
 
         compile_time_env = get_cython_compile_time_env(
-            use_system_liblo=self.use_system_liblo,
+            use_bundled_liblo=self.use_bundled_liblo,
             defaults=dict(DEBUG=self.debug))
 
         self.distribution.ext_modules[:] = cythonize(
@@ -115,7 +115,7 @@ class build_ext(_build_ext):
 
         super(build_ext, self).finalize_options()
 
-        if not self.use_system_liblo:
+        if self.use_bundled_liblo:
             liblo_prefix = os.path.abspath(os.path.join(DIR, self.build_lib, 'aiolo', 'liblo'))
             library_dir = os.path.join(liblo_prefix, 'lib')
             # Look for the custom library rather than system
@@ -127,19 +127,16 @@ class build_ext(_build_ext):
         self.single_version_externally_managed = False
 
     def run(self):
-        if self.use_system_liblo:
-            if IS_WINDOWS:
-                print('--use-system-liblo passed, not building liblo')
-        else:
+        if self.use_bundled_liblo:
             # Sanity checks for installation
             if SYSTEM == 'darwin':
                 if not have_install_name_tool():
                     raise RuntimeError(
-                        'install_name_tool not found, install Xcode tools or install liblo with --use-system-liblo')
+                        'install_name_tool not found, install Xcode tools or install aiolo without --use-bundled-liblo')
             elif SYSTEM not in ('win32', 'cygwin') and not have_patchelf():
                 raise RuntimeError(
                     'patchelf not found, install patchelf with your system package manager '
-                    '(apt/rpm/apk/etc) or install liblo with --use-system-liblo')
+                    '(apt/rpm/apk/etc) or install aiolo without --use-bundled-liblo')
 
             print('\n*** building liblo ***')
             liblo_prefix = os.path.abspath(os.path.join(DIR, self.build_lib, 'aiolo', 'liblo'))
@@ -174,13 +171,15 @@ class build_ext(_build_ext):
 
 class install(_install):
     user_options = _install.user_options + [
-        ('use-system-liblo', None, 'Link to system-installed liblo shared library'),
+        ('use-bundled-liblo', None, 'Install a bundled version of liblo with this package'),
+        ('debug', None, 'Build with debug symbols'),
     ]
-    boolean_options = _install.boolean_options + ['use-system-liblo']
+    boolean_options = _install.boolean_options + ['use-bundled-liblo']
 
     def initialize_options(self):
         super(install, self).initialize_options()
-        self.use_system_liblo = IS_WINDOWS or ('--use-system-liblo' in sys.argv)
+        self.use_bundled_liblo = '--use-bundled-liblo' in sys.argv
+        self.debug = '--debug' in sys.argv
 
     def finalize_options(self):
         super(install, self).finalize_options()
@@ -189,7 +188,7 @@ class install(_install):
 
     def run(self):
         super(install, self).run()
-        if not self.use_system_liblo:
+        if self.use_bundled_liblo:
             # Adjust the link to the shared library from the build directory to the install directory
             source_library_path = os.path.abspath(
                 os.path.join(self.build_lib, 'aiolo', 'liblo', 'lib', 'liblo.7.%s' % LIBRARY_SUFFIX))
@@ -252,7 +251,7 @@ setup(
             # Include cython source
             '*.pyx',
             '*.pxd',
-            # include built liblo (unless passed --use-system-liblo)
+            # include built liblo if --use-bundled-liblo was passed
             'liblo/*',
         ],
     },

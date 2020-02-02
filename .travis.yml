@@ -24,7 +24,7 @@ addons:
 matrix:
   include:
     - os: linux
-      env: DEBIAN_FRONTEND=noninteractive USE_SYSTEM_LIBLO=1
+      env: DEBIAN_FRONTEND=noninteractive USE_BUNDLED_LIBLO=1
       python: "3.6"
     - os: linux
       env: DEBIAN_FRONTEND=noninteractive
@@ -36,7 +36,7 @@ matrix:
       env: DEBIAN_FRONTEND=noninteractive
       python: "pypy3"
     - os: osx
-      env: CPYTHON_VERSION=3.6.8 PYTHON_PATH=/usr/local/bin/python3.6 USE_SYSTEM_LIBLO=1
+      env: CPYTHON_VERSION=3.6.8 PYTHON_PATH=/usr/local/bin/python3.6 USE_BUNDLED_LIBLO=1
       language: generic
     - os: osx
       env: CPYTHON_VERSION=3.7.6 PYTHON_PATH=/usr/local/bin/python3.7
@@ -52,14 +52,14 @@ install:
   - |
     case $TRAVIS_OS_NAME in
       linux)
-        if [ "x$USE_SYSTEM_LIBLO" == "x1" ]; then
+        if [ "x$USE_BUNDLED_LIBLO" == "x1" ]; then
           sudo apt-get install liblo7 liblo-dev;
         fi
         sudo pip install pipenv;
         pipenv install --python `which python` --skip-lock;
         ;;
       osx)
-        if [ "x$USE_SYSTEM_LIBLO" == "x1" ]; then
+        if [ "x$USE_BUNDLED_LIBLO" == "x1" ]; then
           brew update;
           brew install liblo;
         fi
@@ -82,8 +82,8 @@ script:
   - pipenv run python setup.py build_ext --debug
   - pipenv run pip install uvloop netifaces pytest pytest-asyncio
   - |
-      if [ "x$USE_SYSTEM_LIBLO" == "x1" ]; then
-        pipenv run python setup.py install --use-system-liblo
+      if [ "x$USE_BUNDLED_LIBLO" == "x1" ]; then
+        pipenv run python setup.py install --use-bundled-liblo
       else
         pipenv run python setup.py install
       fi
