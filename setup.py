@@ -278,7 +278,6 @@ setup(
             'netifaces',
             'pytest',
             'pytest-asyncio',
-            'pytest-xdist',
         ],
         'dev': [
             'uvloop',
@@ -286,7 +285,6 @@ setup(
             'pytest',
             'pytest-asyncio',
             'pytest-instafail',
-            'pytest-xdist',
         ]
     },
     classifiers=[

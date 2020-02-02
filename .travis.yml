@@ -80,11 +80,11 @@ install:
 
 script:
   - pipenv run python setup.py build_ext --debug
-  - pipenv run pip install uvloop netifaces pytest pytest-asyncio pytest-xdist
+  - pipenv run pip install uvloop netifaces pytest pytest-asyncio
   - |
       if [ "x$USE_SYSTEM_LIBLO" == "x1" ]; then
         pipenv run python setup.py install --use-system-liblo
       else
         pipenv run python setup.py install
       fi
-  - pipenv run pytest --verbose -n 4 test.py
+  - pipenv run pytest --verbose test.py
