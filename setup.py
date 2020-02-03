@@ -107,6 +107,10 @@ class build_ext(_build_ext):
             use_bundled_liblo=self.use_bundled_liblo,
             defaults=dict(DEBUG=self.debug))
 
+        if not self.use_bundled_liblo:
+            for extn in self.distribution.ext_modules:
+                extn.libraries = ['lo']
+
         self.distribution.ext_modules[:] = cythonize(
             self.distribution.ext_modules,
             gdb_debug=self.debug,
@@ -114,14 +118,6 @@ class build_ext(_build_ext):
         )
 
         super(build_ext, self).finalize_options()
-
-        if self.use_bundled_liblo:
-            liblo_prefix = os.path.abspath(os.path.join(DIR, self.build_lib, 'aiolo', 'liblo'))
-            library_dir = os.path.join(liblo_prefix, 'lib')
-            # Look for the custom library rather than system
-            extra_link_args = ['-L%s' % library_dir, '-llo']
-            for extn in self.distribution.ext_modules:
-                extn.extra_link_args += extra_link_args
 
         # Never install as an egg
         self.single_version_externally_managed = False
@@ -142,8 +138,19 @@ class build_ext(_build_ext):
             liblo_prefix = os.path.abspath(os.path.join(DIR, self.build_lib, 'aiolo', 'liblo'))
             library_dir = os.path.join(liblo_prefix, 'lib')
             include_dir = os.path.join(liblo_prefix, 'include')
+
+            # Look for the custom library rather than system
+            extra_link_args = ['-L%s' % library_dir, '-llo.custom']
+            for extn in self.distribution.ext_modules:
+                extn.extra_link_args += extra_link_args
+
+            for extn in self.distribution.ext_modules:
+                extn.library_dirs.append(library_dir)
+                extn.include_dirs.append(include_dir)
+
             self.library_dirs.append(library_dir)
             self.include_dirs.append(include_dir)
+
             # Build custom liblo to install alongside aiolo
             try:
                 subprocess.check_call(['make', 'clean'])
@@ -165,6 +172,11 @@ class build_ext(_build_ext):
             for cmd in cmds:
                 subprocess.check_call(
                     cmd, stdin=sys.stdin, stdout=sys.stdout, stderr=sys.stderr, cwd=LIBLO_DIR)
+
+            os.rename(os.path.join(library_dir, 'liblo.7.dylib'), os.path.join(library_dir, 'liblo.7.custom.dylib'))
+            os.unlink(os.path.join(library_dir, 'liblo.dylib'))
+            os.symlink(os.path.join(library_dir, 'liblo.7.custom.dylib'), os.path.join(library_dir, 'liblo.custom.dylib'))
+
             print('*** built liblo ***')
         super(build_ext, self).run()
 
@@ -191,10 +203,10 @@ class install(_install):
         if self.use_bundled_liblo:
             # Adjust the link to the shared library from the build directory to the install directory
             source_library_path = os.path.abspath(
-                os.path.join(self.build_lib, 'aiolo', 'liblo', 'lib', 'liblo.7.%s' % LIBRARY_SUFFIX))
+                os.path.join(self.build_lib, 'aiolo', 'liblo', 'lib', 'liblo.7.custom.%s' % LIBRARY_SUFFIX))
             destination_library_dir = os.path.abspath(
                 os.path.join(self.install_platlib, 'aiolo', 'liblo', 'lib'))
-            destination_library_path = os.path.join(destination_library_dir, 'liblo.7.%s' % LIBRARY_SUFFIX)
+            destination_library_path = os.path.join(destination_library_dir, 'liblo.7.custom.%s' % LIBRARY_SUFFIX)
             if have_install_name_tool():
                 cmds = [
                     ['install_name_tool', '-change', source_library_path, destination_library_path],
@@ -263,7 +275,6 @@ setup(
         Extension(
             module,
             sources=[source],
-            libraries=['lo'],
         )
         for module, source in get_pyx()
     ],
