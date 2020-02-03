@@ -1,8 +1,6 @@
 
 import faulthandler
 
-import pytest
-
 faulthandler.enable(all_threads=True)
 
 try:

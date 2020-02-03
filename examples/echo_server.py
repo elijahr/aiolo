@@ -1,15 +1,13 @@
 import asyncio
 import datetime
 import logging
-import multiprocessing
 import sys
 
 from aiolo import logger, Address, Message, Midi, Server
 
 
 def pub():
-    address = Address(url='osc.tcp://:10001')
-
+    address = Address(port=12001)
     now = datetime.datetime.now(datetime.timezone.utc)
 
     # Send some delayed data; the server will receive it immediately but enqueue it for processing
@@ -27,28 +25,24 @@ async def main(verbose):
         logger.addHandler(h)
         logger.setLevel(logging.DEBUG)
 
-    server = Server(url='osc.tcp://:10001')
+    server = Server(port=12001)
     server.start()
 
     # Create endpoints
 
-    # /foo accepts an int, a float, and MIDI data
+    # /foo accepts an int, a float, and a MIDI packet
     foo = server.route('/foo', [int, float, Midi])
-    exit = server.route('/exit')
+    ex = server.route('/exit')
 
     # Subscribe to messages for any of the routes
-    subscriptions = foo.sub() | exit.sub()
+    subs = foo.sub() | ex.sub()
 
-    # Send data from another process
-    proc = multiprocessing.Process(target=pub)
-    proc.start()
-    proc.join()
+    pub()
 
-    async for route, data in subscriptions:
+    async for route, data in subs:
         print(f'echo_server: {str(route.path)} received {data}')
-        if route == exit:
-            # Unsubscribing isn't necessary but is good practice
-            await subscriptions.unsub()
+        if route == ex:
+            await subs.unsub()
             break
 
     server.stop()

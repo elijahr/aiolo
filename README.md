@@ -24,15 +24,13 @@ One of the many beautiful things in Python is support for operator overloading. 
 import asyncio
 import datetime
 import logging
-import multiprocessing
 import sys
 
 from aiolo import logger, Address, Message, Midi, Server
 
 
 def pub():
-    address = Address(url='osc.tcp://:10001')
-
+    address = Address(port=12001)
     now = datetime.datetime.now(datetime.timezone.utc)
 
     # Send some delayed data; the server will receive it immediately but enqueue it for processing
@@ -50,28 +48,24 @@ async def main(verbose):
         logger.addHandler(h)
         logger.setLevel(logging.DEBUG)
 
-    server = Server(url='osc.tcp://:10001')
+    server = Server(port=12001)
     server.start()
 
     # Create endpoints
 
-    # /foo accepts an int, a float, and MIDI data
+    # /foo accepts an int, a float, and a MIDI packet
     foo = server.route('/foo', [int, float, Midi])
-    exit = server.route('/exit')
+    ex = server.route('/exit')
 
     # Subscribe to messages for any of the routes
-    subscriptions = foo.sub() | exit.sub()
+    subs = foo.sub() | ex.sub()
 
-    # Send data from another process
-    proc = multiprocessing.Process(target=pub)
-    proc.start()
-    proc.join()
+    pub()
 
-    async for route, data in subscriptions:
+    async for route, data in subs:
         print(f'echo_server: {str(route.path)} received {data}')
-        if route == exit:
-            # Unsubscribing isn't necessary but is good practice
-            await subscriptions.unsub()
+        if route == ex:
+            await subs.unsub()
             break
 
     server.stop()
@@ -86,36 +80,19 @@ if __name__ == '__main__':
 ### [MultiCast](https://github.com/elijahr/aiolo/blob/master/examples/multicast.py)
 ```python
 import asyncio
+import datetime
 import random
 
-from aiolo import MultiCast, MultiCastAddress, Route, Server
-
-
-async def sub(foo):
-    """
-    Listen for incoming strings at /foo on any server in the cluster
-    """
-    messages = []
-    subscription = foo.sub()
-    async for (msg,) in subscription:
-        print(f'/foo got message: {msg}')
-        messages.append(msg)
-        if len(messages) == 10:
-            break
-    return messages
+from aiolo import MultiCast, MultiCastAddress, Route, Server, Message
 
 
 async def main():
-    loop = asyncio.get_event_loop()
+    # Create endpoints for receiving data
+    foo = Route('/foo', str)
+    ex = Route('/exit')
 
     # Create a multicast group
     multicast = MultiCast('224.0.1.1', port=15432)
-
-    # Create an endpoint for receiving a single string of data at /foo
-    foo = Route('/foo', str)
-
-    # Subscribe to incoming messages
-    task = loop.create_task(sub(foo))
 
     # Create a cluster of servers in the same multicast group
     cluster = []
@@ -123,22 +100,27 @@ async def main():
         server = Server(multicast=multicast)
         # Have them all handle the same route
         server.route(foo)
+        server.route(ex)
         server.start()
         cluster.append(server)
 
+    address = MultiCastAddress(server=random.choice(cluster))
+
     # Send a single message from any one server to the entire cluster.
     # The message will be received by each server.
-    address = MultiCastAddress(server=random.choice(cluster))
-    address.send(foo, 'foo')
+    address.delay(datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(seconds=1), Message(foo, 'foo'))
 
-    # Wait for results
-    messages = await task
-    try:
-        # The message will have been received once by each server in the cluster
-        assert messages == ['foo'] * len(cluster)
-    finally:
-        for server in cluster:
-            server.stop()
+    # Notify subscriptions to exit in 1 sec
+    address.delay(datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(seconds=2), Message(ex))
+
+    # Listen for incoming strings at /foo on any server in the cluster
+    async for route, data in foo.sub() | ex.sub():
+        print(f'{route} got data: {data}')
+        if route == ex:
+            break
+
+    for server in cluster:
+        server.stop()
 
 
 if __name__ == '__main__':

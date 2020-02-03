@@ -2,6 +2,7 @@
 
 import asyncio
 import socket
+from typing import Union
 
 from . import exceptions, logs
 from . cimport lo, multicasts
@@ -14,6 +15,17 @@ __all__ = ['AioServer', 'Server']
 
 
 cdef class AioServer(AbstractServer):
+
+    def __init__(
+        self,
+        *,
+        url: Union[str, None] = None,
+        port: Union[str, int, None] = None,
+        proto: Union[str, int, None] = None,
+        multicast: Union[multicasts.MultiCast, None] = None,
+        **kwargs,
+    ):
+        pass
 
     def __dealloc__(self):
         if self.lo_server is not NULL:
@@ -113,6 +125,10 @@ cdef class AioServer(AbstractServer):
                     # I am verklempt that passing a cdef void function to call_later actually works,
                     # but it does! I'll just go with it because it is faster.
                     asyncio.get_event_loop().call_later(delay, self._on_sock_readable, self)
+            else:
+                IF DEBUG:
+                    with gil:
+                        logs.logger.debug('%r: no pending server events', self)
 
 
 # Server is an alias for AioServer

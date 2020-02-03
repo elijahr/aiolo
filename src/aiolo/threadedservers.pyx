@@ -31,6 +31,17 @@ cdef class ThreadedServer(AbstractServer):
     ):
         self.initialized_event = threading.Event()
 
+    def __init__(
+        self,
+        *,
+        url: Union[str, None] = None,
+        port: Union[str, int, None] = None,
+        proto: Union[str, int, None] = None,
+        multicast: Union[multicasts.MultiCast, None] = None,
+        **kwargs,
+    ):
+        pass
+
     def __dealloc__(self):
         if self.lo_server_thread is not NULL:
             with nogil:

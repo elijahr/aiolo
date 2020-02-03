@@ -126,6 +126,8 @@ cdef class Bundle:
         else:
             try:
                 for item in msg:
+                    if not isinstance(item, (Bundle, messages.Message)):
+                        raise TypeError('Cannot add %s' % repr(item))
                     self.add(item)
             except TypeError:
                 raise TypeError('Cannot add %s to bundle' % repr(msg))

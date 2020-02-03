@@ -199,6 +199,9 @@ cdef class AbstractServer:
 
             self.lo_server_start()
 
+            # Steal a ref for error_context
+            Py_INCREF(self)
+
             # Add a handler for any path and any args; the handler handles routing in python-land
             if lo.lo_server_add_method(
                 self.lo_server,
@@ -207,24 +210,22 @@ cdef class AbstractServer:
                 <lo.lo_method_handler>router,
                 <void*>self
             ) is NULL:
-                self.stop()
+                self.stop(force=True)
                 raise exceptions.StartError('Could not add default method')
 
             lo.lo_server_enable_queue(self.lo_server, self.queue_enabled, 0)
 
-            # Steal a ref for error_context
-            Py_INCREF(self)
             lo.lo_server_set_error_context(self.lo_server, <void*>self)
             IF DEBUG: logs.logger.debug('%r: started', self)
 
         finally:
             self.startstoplock.release()
 
-    def stop(self, timeout: Union[float, int] = -1):
+    def stop(self, timeout: Union[float, int] = -1, force: bool = False):
         if not self.startstoplock.acquire(timeout=timeout):
             raise exceptions.StopError('Timed out waiting for lock')
         try:
-            if not self.running:
+            if not force and not self.running:
                 raise exceptions.StopError('%r not started, cannot stop' % self)
             self.lo_server_stop()
             # Unsteal the error_context ref
