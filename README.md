@@ -144,7 +144,6 @@ Pull requests are welcome, please file any issues you encounter.
 
 ### 4.0.0
 
-* Support bundling a newer liblo via `python setup.py --use-bundled-liblo`
 * Use Python-based OSC address pattern matching rather than liblo's, supports escaped special characters
 * Ensure ThreadedServer.start() waits for thread to be initialized
 * Fix bug where subscribers might not receive pending data

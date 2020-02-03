@@ -82,7 +82,6 @@ install:
       esac
 
 script:
-  - pipenv run python setup.py build_ext --debug
   - pipenv run pip install uvloop netifaces pytest pytest-asyncio
   - |
       if [ "x$USE_BUNDLED_LIBLO" == "x1" ]; then
