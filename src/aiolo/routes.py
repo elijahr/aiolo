@@ -197,7 +197,7 @@ class Subs(collections.abc.AsyncIterator):
             other = Subs(other)
         if not isinstance(other, Subs):
             raise TypeError('Invalid value for Subs.__eq__: %s' % repr(other))
-        return hash(self) == hash(other)
+        return self._subs == other._subs
 
     def __lt__(self, other: Union['Sub', 'Subs']) -> bool:
         if isinstance(other, Sub):
