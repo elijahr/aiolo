@@ -11,6 +11,9 @@ deploy:
 
 language: python
 
+git:
+  submodules: true
+
 addons:
   apt:
     packages:
