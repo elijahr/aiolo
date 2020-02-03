@@ -148,7 +148,7 @@ def compile_osc_address_pattern(path_string: Union[str, None]):
         raise ValueError('Invalid pattern %r' % path_string)
     patterns = []
     for path_part_string in path_part_strings:
-        patterns += ['/', r''.join(parse_osc_address_pattern_path_part(path_part_string))]
+        patterns.append(r''.join(parse_osc_address_pattern_path_part(path_part_string)))
     finalized = finalize(join(*patterns))
     logs.logger.debug('compile_osc_address_pattern(%r) => %r', path_string, finalized)
     return re.compile(finalized)
@@ -161,6 +161,7 @@ def parse_osc_address_pattern_path_part(path_part_string: str) -> Generator[str,
         yield PATH_PATTERN
         return
 
+    yield unescaped(r'/')
     prev_end = 0
     for match in PATH_PART_REGEX.finditer(path_part_string):
         (array,
