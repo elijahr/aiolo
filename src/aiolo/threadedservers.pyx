@@ -69,7 +69,10 @@ cdef class ThreadedServer(AbstractServer):
                 ip = multicast._ip
             else:
                 ip = NO_IP
-            IF _LO_VERSION < "0.30":
+            IF _LO_VERSION >= "0.30":
+                lo_server_thread = lo.lo_server_thread_new_multicast_iface(
+                    multicast._group, multicast._port, iface, ip, on_error)
+            ELSE:
                 if iface != NO_IFACE or ip != NO_IP:
                     raise exceptions.StartError(
                         'liblo < 0.30 does not support setting multicast interface for a server thread. '
@@ -77,9 +80,6 @@ cdef class ThreadedServer(AbstractServer):
                 else:
                     lo_server_thread = lo.lo_server_thread_new_multicast(
                         multicast._group, multicast._port, on_error)
-            ELSE:
-                lo_server_thread = lo.lo_server_thread_new_multicast_iface(
-                    multicast._group, multicast._port, iface, ip, on_error)
         elif self._proto:
             port = self._port.encode('utf8')
             lo_server_thread = lo.lo_server_thread_new_with_proto(port, self._proto, on_error)
