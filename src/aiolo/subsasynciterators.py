@@ -1,5 +1,6 @@
 import asyncio
 import collections.abc
+import sys
 from typing import Union, List, Tuple, TYPE_CHECKING, FrozenSet
 
 from . import exceptions, types
@@ -29,7 +30,7 @@ class SubsAsyncIterator(collections.abc.AsyncIterator):
             for sub, tasks in self._tasks.items():
                 # If the sub does not have a done or pending task, add one
                 if not tasks:
-                    self._tasks[sub].add(asyncio.ensure_future(sub.next()))
+                    self._tasks[sub].add(next_task(sub))
 
             await asyncio.wait(self.futures, return_when=asyncio.FIRST_COMPLETED)
 
@@ -75,3 +76,13 @@ class SubsAsyncIterator(collections.abc.AsyncIterator):
     @property
     def futures(self) -> FrozenSet[asyncio.Future]:
         return frozenset({task for tasks in self._tasks.values() for task in tasks})
+
+
+def next_task(sub):
+    coro = sub.next()
+    if sys.version_info[:2] >= (3, 7):
+        task = asyncio.create_task(coro)
+    else:
+        loop = sub.route.loop
+        task = loop.create_task(coro)
+    return task

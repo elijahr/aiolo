@@ -1,15 +1,14 @@
 import asyncio
 from typing import Union, Iterable
 
-from . import exceptions, types, typespecs, paths
-from . cimport subs
+from . import exceptions, subs, types, typespecs, paths
 
 
 __all__ = ['Route', 'ANY_ROUTE']
 
 
-cdef class Route:
-    def __cinit__(
+class Route:
+    def __init__(
         self,
         path: types.PathTypes,
         typespec: types.TypeSpecTypes = None,
@@ -21,13 +20,6 @@ cdef class Route:
             self.loop = asyncio.get_event_loop()
         except RuntimeError:
             self.loop = None
-
-    def __init__(
-        self,
-        path: types.PathTypes,
-        typespec: types.TypeSpecTypes = None,
-    ):
-        pass
 
     def __repr__(self):
         return 'Route(%s, %s)' % (self.path.simplerepr, self.typespec.simplerepr)
@@ -93,31 +85,16 @@ cdef class Route:
         self._subs.add(sub)
         return sub
 
-    IF PYPY:
-        def pub(self, items: Iterable[types.PubTypes]):
-            return asyncio.gather(*[
-                s.pub(items)
-                for s in self._subs
-            ])
+    async def pub(self, items: Iterable[types.PubTypes]):
+        await asyncio.gather(*[
+            s.pub(items)
+            for s in self._subs
+        ])
 
-        def unsub(self, sub):
-            if sub in self._subs:
-                self._subs.remove(sub)
-                return sub.pub(exceptions.Unsubscribed())
-            return asyncio.sleep(0)
-
-    ELSE:
-        async def pub(self, items: Iterable[types.PubTypes]):
-            await asyncio.gather(*[
-                s.pub(items)
-                for s in self._subs
-            ])
-
-        async def unsub(self, sub):
-            if sub in self._subs:
-                self._subs.remove(sub)
-                await sub.pub(exceptions.Unsubscribed())
+    async def unsub(self, sub):
+        if sub in self._subs:
+            self._subs.remove(sub)
+            await sub.pub(exceptions.Unsubscribed())
 
 
-cpdef Route _ANY_ROUTE = Route(paths.ANY_PATH, typespecs.ANY_ARGS)
-ANY_ROUTE = _ANY_ROUTE
+ANY_ROUTE = Route(paths.ANY_PATH, typespecs.ANY_ARGS)

@@ -365,7 +365,7 @@ def test_unpack_message(path, typespec, data, expected):
     """
     route = Route(path, typespec)
     message = Message(route, data)
-    assert message.pack() == expected
+    assert message.unpack() == expected
 
 def unpack_message_type_error_data():
     for typespec_test_data in test_data.ARGDEF_TEST_DATA:
@@ -382,7 +382,7 @@ def test_unpack_message_type_error(path, typespec, data):
     route = Route(path, typespec)
     with pytest.raises(TypeError):
         message = Message(route, data)
-        message.pack()
+        message.unpack()
 
 
 def unpack_message_overflow_error_data():
@@ -400,7 +400,7 @@ def test_unpack_message_overflow_error(path, typespec, data):
     route = Route(path, typespec)
     with pytest.raises(OverflowError):
         message = Message(route, data)
-        message.pack()
+        message.unpack()
 
 
 def unpack_message_value_error_data():
@@ -418,7 +418,7 @@ def test_unpack_message_value_error(path, typespec, data):
     route = Route(path, typespec)
     with pytest.raises(ValueError):
         message = Message(route, data)
-        message.pack()
+        message.unpack()
 
 
 @pytest.mark.parametrize('value, typespec', [

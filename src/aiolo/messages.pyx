@@ -13,8 +13,8 @@ import array
 
 from .timetags import TT_IMMEDIATE
 
-from . import types
-from . cimport lo, paths, routes, timetags, typespecs, pack
+from . import routes, types
+from . cimport lo, paths, timetags, typespecs, pack
 
 
 __all__ = ['Bundle', 'Message']
@@ -45,7 +45,7 @@ cdef class Message:
         pass
 
     def __repr__(Message self):
-        return 'Message(%r, %r)' % (self.route, self.pack())
+        return 'Message(%r, %r)' % (self.route, self.unpack())
 
     def __hash__(self):
         return hash(b'Message:' + bytes(self.raw()))
