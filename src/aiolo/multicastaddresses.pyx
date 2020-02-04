@@ -1,7 +1,7 @@
 # cython: language_level=3
 
 from . import exceptions, logs
-from . cimport abstractservers, addresses, bundles, lo, messages, paths
+from . cimport abstractservers, addresses, lo, messages, paths
 
 
 __all__ = ['MultiCastAddress']
@@ -37,10 +37,10 @@ cdef class MultiCastAddress(addresses.Address):
         IF DEBUG: logs.logger.debug('%r: sent %s bytes', self, count)
         return count
 
-    cdef int _bundle(self, bundles.Bundle bundle):
+    cdef int _bundle(self, messages.Bundle bundle):
         cdef:
             int count
-            lo.lo_bundle lo_bundle = (<bundles.Bundle>bundle).lo_bundle
+            lo.lo_bundle lo_bundle = (<messages.Bundle>bundle).lo_bundle
             lo.lo_server lo_server = self.server.lo_server
 
         IF DEBUG: logs.logger.debug('%r: sending %r from %r', self, bundle, self.server)

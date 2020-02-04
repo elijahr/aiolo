@@ -3,7 +3,7 @@
 from typing import Union
 
 from . import exceptions, ips, logs, protos, types
-from . cimport bundles, lo, messages, paths
+from . cimport lo, messages, paths
 
 
 __all__ = ['Address']
@@ -173,7 +173,7 @@ cdef class Address:
         route: Union[types.RouteTypes],
         *data: types.MessageTypes
     ) -> int:
-        bundle = bundles.Bundle(data, timetag)
+        bundle = messages.Bundle(data, timetag)
         return self._bundle(bundle)
 
     def message(self, message: messages.Message) -> int:
@@ -182,8 +182,8 @@ cdef class Address:
         return self._message(message)
 
     def bundle(self, bundle: types.BundleTypes, timetag: types.TimeTagTypes = None) -> int:
-        if not isinstance(bundle, bundles.Bundle):
-            bundle = bundles.Bundle(bundle, timetag)
+        if not isinstance(bundle, messages.Bundle):
+            bundle = messages.Bundle(bundle, timetag)
         elif timetag is not None:
             raise ValueError('Cannot provide Bundle instance and timetag together')
         return self._bundle(bundle)
@@ -205,10 +205,10 @@ cdef class Address:
         IF DEBUG: logs.logger.debug('%r: sent %s bytes', self, count)
         return count
 
-    cdef int _bundle(self, bundles.Bundle bundle):
+    cdef int _bundle(self, messages.Bundle bundle):
         cdef:
             int count
-            lo.lo_bundle lo_bundle = (<bundles.Bundle>bundle).lo_bundle
+            lo.lo_bundle lo_bundle = (<messages.Bundle>bundle).lo_bundle
 
         IF DEBUG: logs.logger.debug('%r: sending %r', self, bundle)
 

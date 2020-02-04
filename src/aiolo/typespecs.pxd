@@ -8,7 +8,7 @@ IF not PYPY:
 import array
 
 from . import types
-from . cimport abstractspecs, lo, messages
+from . cimport abstractspecs
 
 # 32 bit signed integer.
 cpdef char LO_INT32
@@ -56,9 +56,7 @@ ELSE:
 cdef tuple EMPTY_STRINGS
 
 cdef class TypeSpec(abstractspecs.AbstractSpec):
-    cpdef list unpack_message(self, messages.Message message)
-    cdef list unpack_args(self, lo.lo_arg ** argv, int argc)
-    cdef lo.lo_message pack_lo_message(self, object args: Iterable[types.MessageTypes]) except NULL
+    pass
 
 cpdef object guess_for_arg_list(object args: Iterable[types.MessageTypes])
 

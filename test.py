@@ -347,7 +347,7 @@ async def test_multiple_servers(any_server_class, unused_tcp_port_factory):
             server.stop()
 
 
-def typespec_unpack_message_data():
+def unpack_message_data():
     for t in test_data.ARGDEF_TEST_DATA:
         for typespec in t.typespecs:
             for value, expected in t.valid:
@@ -358,67 +358,67 @@ def typespec_unpack_message_data():
                 yield t.path, [typespec, typespec], [value, value], [expected, expected]
 
 
-@pytest.mark.parametrize('path, typespec, data, expected', typespec_unpack_message_data())
-def test_typespec_unpack_message(path, typespec, data, expected):
+@pytest.mark.parametrize('path, typespec, data, expected', unpack_message_data())
+def test_unpack_message(path, typespec, data, expected):
     """
     Test that types get parsed correctly
     """
     route = Route(path, typespec)
     message = Message(route, data)
-    assert message.unpack() == expected
+    assert message.pack() == expected
 
-def typespec_unpack_message_type_error_data():
+def unpack_message_type_error_data():
     for typespec_test_data in test_data.ARGDEF_TEST_DATA:
         for typespec in typespec_test_data.typespecs:
             for value in typespec_test_data.type_error:
                 yield typespec_test_data.path, typespec, [value]
 
 
-@pytest.mark.parametrize('path, typespec, data', typespec_unpack_message_type_error_data())
-def test_typespec_unpack_message_type_error(path, typespec, data):
+@pytest.mark.parametrize('path, typespec, data', unpack_message_type_error_data())
+def test_unpack_message_type_error(path, typespec, data):
     """
     Test that TypeError is raised for invalid data types
     """
     route = Route(path, typespec)
     with pytest.raises(TypeError):
         message = Message(route, data)
-        message.unpack()
+        message.pack()
 
 
-def typespec_unpack_message_overflow_error_data():
+def unpack_message_overflow_error_data():
     for t in test_data.ARGDEF_TEST_DATA:
         for typespec in t.typespecs:
             for value in t.overflow_error:
                 yield t.path, typespec, [value]
 
 
-@pytest.mark.parametrize('path, typespec, data', typespec_unpack_message_overflow_error_data())
-def test_typespec_unpack_message_overflow_error(path, typespec, data):
+@pytest.mark.parametrize('path, typespec, data', unpack_message_overflow_error_data())
+def test_unpack_message_overflow_error(path, typespec, data):
     """
     Test that OverflowError is raised for invalid data types
     """
     route = Route(path, typespec)
     with pytest.raises(OverflowError):
         message = Message(route, data)
-        message.unpack()
+        message.pack()
 
 
-def typespec_unpack_message_value_error_data():
+def unpack_message_value_error_data():
     for t in test_data.ARGDEF_TEST_DATA:
         for typespec in t.typespecs:
             for value in t.value_error:
                 yield t.path, typespec, [value]
 
 
-@pytest.mark.parametrize('path, typespec, data', typespec_unpack_message_value_error_data())
-def test_typespec_unpack_message_value_error(path, typespec, data):
+@pytest.mark.parametrize('path, typespec, data', unpack_message_value_error_data())
+def test_unpack_message_value_error(path, typespec, data):
     """
     Test that ValueError is raised for invalid data values
     """
     route = Route(path, typespec)
     with pytest.raises(ValueError):
         message = Message(route, data)
-        message.unpack()
+        message.pack()
 
 
 @pytest.mark.parametrize('value, typespec', [

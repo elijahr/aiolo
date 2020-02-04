@@ -1,13 +1,14 @@
 # cython: language_level=3
+
 import functools
 import threading
-from typing import Union, Generator, Set
+from typing import Union, Set
 
 from cpython.ref cimport Py_INCREF, Py_DECREF
 
 
-from . import exceptions, logs, protos, routes, types
-from . cimport typespecs, lo, multicasts, paths
+from . import exceptions, logs, protos, types
+from . cimport lo, multicasts, paths, routes, typespecs, pack
 
 __all__ = ['AbstractServer']
 
@@ -357,7 +358,7 @@ cdef int router(
                 else:
                     typespec = <typespecs.TypeSpec>route.typespec
                 IF DEBUG: logs.logger.debug('%r: unpacking data for route %r', server, route)
-                data = typespec.unpack_args(argv, argc)
+                data = pack.unpack_args(typespec, argv, argc)
                 IF DEBUG: logs.logger.debug('%r: received message %r', server, data)
                 route.pub_soon_threadsafe(data)
         except BaseException as exc:

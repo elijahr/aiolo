@@ -3,7 +3,7 @@ import datetime
 from typing import Type, Union, TYPE_CHECKING, Iterable, Tuple, List, Callable
 
 if TYPE_CHECKING:
-    from . import typespecs, bundles, midis, paths, routes, timetags
+    from . import messages, midis, paths, routes, timetags, typespecs
 
 
 __all__ = ['TypeSpecTypes', 'BundleTypes', 'PathTypes', 'RouteTypes', 'MessageTypes', 'PubTypes', 'TimeTagTypes']
@@ -38,7 +38,7 @@ TypeSpecTypes = Union[
 # Types that can be used to construct a Bundle
 BundleTypes = Union[
     'messages.Message',
-    'bundles.Bundle',
+    'messages.Bundle',
     Iterable['messages.Message'],
     Iterable['messages.Bundle'],
     # An empty Bundle

@@ -1,6 +1,6 @@
 # cython: language_level=3
 
-from . cimport bundles, lo, messages
+from . cimport lo, messages
 
 cdef class Address:
 
@@ -10,6 +10,6 @@ cdef class Address:
     cdef bint _stream_slip
 
     cdef int _message(self, messages.Message bundle)
-    cdef int _bundle(self, bundles.Bundle bundle)
+    cdef int _bundle(self, messages.Bundle bundle)
 
 cdef Address lo_address_to_address(lo.lo_address lo_address)

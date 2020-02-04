@@ -1,8 +1,8 @@
 import asyncio
 from typing import Union, Iterable
 
-from . import exceptions, types
-from . cimport subs, typespecs, paths
+from . import exceptions, types, typespecs, paths
+from . cimport subs
 
 
 __all__ = ['Route', 'ANY_ROUTE']
@@ -119,5 +119,5 @@ cdef class Route:
                 await sub.pub(exceptions.Unsubscribed())
 
 
-cpdef Route _ANY_ROUTE = Route(paths._ANY_PATH, typespecs._ANY_ARGS)
+cpdef Route _ANY_ROUTE = Route(paths.ANY_PATH, typespecs.ANY_ARGS)
 ANY_ROUTE = _ANY_ROUTE
