@@ -16,6 +16,8 @@ from . import patterns
 from . import paths
 from . import protos
 from . import routes
+from . import subs
+from . import subsasynciterators
 from . import threadedservers
 from . import timetags
 from . import types
@@ -39,6 +41,8 @@ __all__ = \
     + paths.__all__ \
     + protos.__all__ \
     + routes.__all__ \
+    + subs.__all__ \
+    + subsasynciterators.__all__ \
     + threadedservers.__all__ \
     + timetags.__all__ \
     + types.__all__ \
@@ -61,6 +65,8 @@ from .patterns import *
 from .paths import *
 from .protos import *
 from .routes import *
+from .subs import *
+from .subsasynciterators import *
 from .threadedservers import *
 from .timetags import *
 from .types import *

@@ -3,6 +3,8 @@
 from typing import Any
 from libc.stdlib cimport malloc, free
 
+cimport cython
+
 IF not PYPY:
     from cpython cimport array
 
@@ -19,6 +21,7 @@ IF not PYPY:
     cdef array.array MESSAGE_ARRAY_TEMPLATE = array.array('b')
 
 
+@cython.freelist(10)
 cdef class Message:
     def __cinit__(self, route: types.RouteTypes, *args: types.MessageTypes):
         cdef typespecs.TypeSpec typespec

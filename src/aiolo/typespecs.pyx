@@ -615,5 +615,7 @@ cpdef bint flatten_args_into(object data: Iterable, list into: List) except 0:
     return True
 
 
-ANY_ARGS = TypeSpec(None)
-NO_ARGS = TypeSpec('')
+cpdef TypeSpec _ANY_ARGS = TypeSpec(None)
+cpdef TypeSpec _NO_ARGS = TypeSpec('')
+ANY_ARGS = _ANY_ARGS
+NO_ARGS = _NO_ARGS

@@ -68,3 +68,6 @@ cpdef bint flatten_typespec_into(
 ) except 0
 
 cpdef bint flatten_args_into(object data: Iterable, list into: List) except 0
+
+cpdef TypeSpec _ANY_ARGS
+cpdef TypeSpec _NO_ARGS

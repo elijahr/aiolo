@@ -3,6 +3,8 @@
 from typing import Iterable, Union, Iterator, Any
 from libc.stdlib cimport malloc, free
 
+cimport cython
+
 IF not PYPY:
     from cpython cimport array
 
@@ -19,6 +21,7 @@ IF not PYPY:
 __all__ = ['Bundle']
 
 
+@cython.freelist(10)
 cdef class Bundle:
     def __cinit__(
         self,

@@ -22,8 +22,6 @@ IF not PYPY:
 
 PATTERN_REGEX = re.compile(r'([#{}[\]!?*,\-^])|(//)')
 
-ANY_PATH = Path(None)
-
 
 cdef class Path(abstractspecs.AbstractSpec):
     def __cinit__(self, path: types.PathTypes):
@@ -102,3 +100,5 @@ cdef class Path(abstractspecs.AbstractSpec):
         return self.matches_any or patterns.is_osc_address_pattern(self.as_str)
 
 
+cpdef Path _ANY_PATH = Path(None)
+ANY_PATH = _ANY_PATH

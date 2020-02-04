@@ -11,18 +11,17 @@ import netifaces
 import pytest
 import uvloop as uvloop
 
+import conftest
 import test_data
+
 from aiolo import MultiCast, AioServer, Address, Message, PROTO_UDP, PROTO_UNIX, TimeTag, FRAC_PER_SEC, \
-    NO_ARGS, Route, unix_timestamp_to_osc_timestamp, TT_IMMEDIATE, Sub, MultiCastAddress, Bundle, ANY_PATH, TypeSpec, \
-    Subs, StartError, PROTO_DEFAULT, EPOCH_UTC, ANY_ARGS, JAN_1970, ThreadedServer, Midi, PROTO_TCP, INFINITY, \
-    INFINITUM, TIMETAG, MIDI, NIL, FALSE, TRUE, BLOB, STRING, DOUBLE, INT64, Path, \
+    NO_ARGS, Route, unix_timestamp_to_osc_timestamp, TT_IMMEDIATE, MultiCastAddress, Bundle, ANY_PATH, TypeSpec, \
+    StartError, PROTO_DEFAULT, EPOCH_UTC, ANY_ARGS, JAN_1970, ThreadedServer, Midi, PROTO_TCP, INFINITY, \
+    INFINITUM, TIMETAG, MIDI, NIL, FALSE, TRUE, BLOB, STRING, DOUBLE, INT64, Path, Sub, Subs, \
     compile_osc_address_pattern
 
 
-CANCEL_TIMEOUT = 6
-
-
-def create_task(coro, cancel_timeout=CANCEL_TIMEOUT):
+def create_task(coro, cancel_timeout=conftest.CANCEL_TIMEOUT):
     loop = asyncio.get_event_loop()
     if sys.version_info[:2] >= (3, 7):
         task = asyncio.create_task(coro)
@@ -62,7 +61,10 @@ def event_loop(request):
     loop_mod = request.param
     loop = loop_mod.new_event_loop()
     asyncio.set_event_loop(loop)
-    loop.set_debug(True)
+    if loop_mod != uvloop:
+        # uvloop in debug mode calls extract_stack, which results in "ValueError: call stack is not deep enough"
+        # for Cython code
+        loop.set_debug(True)
     with contextlib.closing(loop):
         yield loop
 
@@ -220,7 +222,7 @@ async def test_multiple_addresses(any_server):
     task = create_task(subscribe(foo.sub(), 3))
     for i, address in enumerate(addresses):
         address.send(foo, i)
-        await asyncio.sleep(0.1)
+        # await asyncio.sleep(0.1)
     results = await task
     assert results == [[0], [1], [2]]
 
@@ -301,11 +303,11 @@ async def test_multicast(any_server_class, unused_tcp_port):
 
     task = create_task(
         subscribe(foo.sub(), 3 * len(cluster)),
-        cancel_timeout=CANCEL_TIMEOUT * len(cluster))
+        cancel_timeout=conftest.CANCEL_TIMEOUT * len(cluster))
 
     for d in ['foo', 'bar', 'baz']:
         address.send(foo, d)
-        await asyncio.sleep(1)
+        # await asyncio.sleep(1)
 
     results = await task
 
@@ -451,16 +453,16 @@ def test_typespec_guess_type_error(value):
 
 
 @pytest.mark.asyncio
-async def test_multiple_subs(any_server):
+async def test_reuse_subs(any_server):
     address = Address(url=any_server.url)
     foo = any_server.route('/foo', 's')
-    tasks = asyncio.gather(
-        create_task(subscribe(foo.sub(), 1)),
-        create_task(subscribe(foo.sub(), 1)),
-    )
+    tasks = asyncio.gather(*[
+        create_task(subscribe(foo.sub(), 1))
+        for i in range(3)
+    ])
     address.send(foo, 'bar')
-    results = list(await tasks)
-    assert results == [[['bar']], [['bar']]]
+    with pytest.raises(asyncio.CancelledError):
+        await tasks
 
 
 @pytest.mark.asyncio
