@@ -497,13 +497,14 @@ async def test_bundle(server):
 async def test_bundle_delayed(server):
     address = Address(url=server.url)
     foo = server.route('/foo', 's')
-    task = create_task(subscribe(foo.sub(), 1), cancel_timeout=2)
+    task = create_task(subscribe(foo.sub(), 1))
     address.bundle([
         Message(foo, 'now'),
         Bundle(
             [Message(foo, 'later')],
-            timetag=now() + datetime.timedelta(seconds=1))
+            timetag=now() + datetime.timedelta(seconds=0.5))
     ])
+    address.delay(1, foo, 'later than later')
     results = list(await task)
     assert results == [['now']]
     assert server.events_pending
@@ -511,6 +512,12 @@ async def test_bundle_delayed(server):
     task = create_task(subscribe(foo.sub(), 1))
     results = list(await task)
     assert results == [['later']]
+    assert server.events_pending
+    assert 0 < server.next_event_delay < 1
+    task = create_task(subscribe(foo.sub(), 1))
+    results = list(await task)
+    assert results == [['later than later']]
+    assert not server.events_pending
 
 
 def test_bundle_and_message_ops():
@@ -519,6 +526,7 @@ def test_bundle_and_message_ops():
     baz = Route('/baz', 's')
     spaz = Route('/spaz', 's')
     bundle = Bundle()
+    assert len(bundle) == 0
     assert bundle == Bundle()
 
     with pytest.raises(IndexError):
@@ -545,20 +553,24 @@ def test_bundle_and_message_ops():
     # Test adding a message to a bundle via __iadd__
     orig = bundle
     bundle += Message(foo, 'foo')
+    assert len(bundle) == 1
     assert bundle[0] == Message(foo, 'foo')
     assert bundle is orig
 
     # Test adding several messages at once
     bundle += [Message(bar, 'bar'), Message(baz, 'baz')]
+    assert len(bundle) == 3
     assert bundle[1] == Message(bar, 'bar')
     assert bundle[2] == Message(baz, 'baz')
 
     # Test adding a nested bundle
     bundle += Bundle(Message(spaz, 'spaz'))
+    assert len(bundle) == 4
     assert bundle[3] == Bundle(Message(spaz, 'spaz'))
 
     # Test __add__ instead of __iadd__
     other = Message(foo, 'foo') + Message(bar, 'bar') + Message(baz, 'baz')
+    assert len(other) == 3
     assert bundle != other
     assert bundle != other + Message(spaz, 'spaz')
     assert bundle == other + Bundle(Message(spaz, 'spaz'))

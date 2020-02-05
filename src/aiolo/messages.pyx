@@ -109,7 +109,7 @@ cdef class Bundle:
         self.msgs = []
         if isinstance(msgs, messages.Message):
             self.add_message(msgs)
-        else:
+        elif msgs:
             for msg in msgs:
                 self.add(msg)
 
