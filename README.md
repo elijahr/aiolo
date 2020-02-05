@@ -6,7 +6,9 @@ asyncio-friendly Python bindings for [liblo](http://liblo.sourceforge.net/), an 
 ## Installation
 
 Install liblo:
+
 OSX: `brew install liblo`
+
 Ubuntu: `apt-get install liblo7 liblo-dev`
 
 ```shell
