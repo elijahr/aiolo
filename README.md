@@ -5,19 +5,17 @@ asyncio-friendly Python bindings for [liblo](http://liblo.sourceforge.net/), an 
 
 ## Installation
 
+Install liblo:
+OSX: `brew install liblo`
+Ubuntu: `apt-get install liblo7 liblo-dev`
+
 ```shell
 pip install aiolo
 ```
 
-By default, aiolo will install alongside a [fork of liblo]() containing unreleased bugfixes. To use system liblo installed via apt or homebrew, install aiolo with:
-
-```shell
-pip install aiolo --use-system-liblo
-``` 
-
 ## Examples
 
-One of the many beautiful things in Python is support for operator overloading. aiolo embraces this enthusiastically to offer the would-be OSC hacker an intuitive programming experience for objects such as `Message`, `Bundle`, `Route`, `Path`, and `ArgSpec`.
+One of the many beautiful things in Python is support for operator overloading. aiolo embraces this enthusiastically to offer the would-be OSC hacker an intuitive programming experience for objects such as `Message`, `Bundle`, `Route`, and `Sub`.
 
 ### [Simple echo server](https://github.com/elijahr/aiolo/blob/master/examples/echo_server.py)
 

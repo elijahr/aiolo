@@ -22,7 +22,8 @@ addons:
     - python
     - python-pip
     - python-virtualenv
-    - patchelf
+    - liblo7
+    - liblo-dev
 
 matrix:
   include:
@@ -55,7 +56,6 @@ install:
   - |
     case $TRAVIS_OS_NAME in
       linux)
-        sudo apt-get install liblo7 liblo-dev;
         sudo pip install pipenv;
         pipenv install --python `which python` --skip-lock;
         ;;
