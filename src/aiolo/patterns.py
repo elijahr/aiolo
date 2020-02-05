@@ -161,7 +161,7 @@ def parse_osc_address_pattern_path_part(path_part_string: str) -> Generator[str,
         yield PATH_PATTERN
         return
 
-    yield unescaped(r'/')
+    yield '/'
     prev_end = 0
     for match in PATH_PART_REGEX.finditer(path_part_string):
         (array,
