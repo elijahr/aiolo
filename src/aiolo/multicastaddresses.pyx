@@ -18,7 +18,7 @@ cdef class MultiCastAddress(addresses.Address):
             stream_slip=stream_slip,
             ttl=ttl)
 
-    cdef int _message(self, messages.Message message):
+    cdef int _message(self, messages.Message message) except -1:
         path = (<paths.Path>message.route.path).as_bytes
         cdef:
             int count
@@ -37,7 +37,7 @@ cdef class MultiCastAddress(addresses.Address):
         IF DEBUG: logs.logger.debug('%r: sent %s bytes', self, count)
         return count
 
-    cdef int _bundle(self, messages.Bundle bundle):
+    cdef int _bundle(self, messages.Bundle bundle) except -1:
         cdef:
             int count
             lo.lo_bundle lo_bundle = (<messages.Bundle>bundle).lo_bundle

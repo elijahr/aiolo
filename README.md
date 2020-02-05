@@ -20,33 +20,14 @@ pip install aiolo --use-system-liblo
 One of the many beautiful things in Python is support for operator overloading. aiolo embraces this enthusiastically to offer the would-be OSC hacker an intuitive programming experience for objects such as `Message`, `Bundle`, `Route`, `Path`, and `ArgSpec`.
 
 ### [Simple echo server](https://github.com/elijahr/aiolo/blob/master/examples/echo_server.py)
+
 ```python
 import asyncio
-import datetime
-import logging
-import sys
 
-from aiolo import logger, Address, Message, Midi, Server
+from aiolo import Address, Midi, Server
 
 
-def pub():
-    address = Address(port=12001)
-    now = datetime.datetime.now(datetime.timezone.utc)
-
-    # Send some delayed data; the server will receive it immediately but enqueue it for processing
-    # at the specified bundle timetag
-    for i in range(5):
-        address.delay(now + datetime.timedelta(seconds=i), Message('/foo', i, float(i), Midi(i, i, i, i)))
-
-    address.delay(now + datetime.timedelta(seconds=6), Message('/exit'))
-
-
-async def main(verbose):
-    if verbose:
-        h = logging.StreamHandler()
-        h.setLevel(logging.DEBUG)
-        logger.addHandler(h)
-        logger.setLevel(logging.DEBUG)
+async def main():
 
     server = Server(port=12001)
     server.start()
@@ -57,33 +38,37 @@ async def main(verbose):
     foo = server.route('/foo', [int, float, Midi])
     ex = server.route('/exit')
 
+    address = Address(port=12001)
+
+    for i in range(5):
+        address.send(foo, i, float(i), Midi(i, i, i, i))
+
+    # Notify subscriptions to exit in 1 sec
+    address.delay(1, ex)
+
     # Subscribe to messages for any of the routes
     subs = foo.sub() | ex.sub()
-
-    pub()
 
     async for route, data in subs:
         print(f'echo_server: {str(route.path)} received {data}')
         if route == ex:
             await subs.unsub()
-            break
 
     server.stop()
 
 
 if __name__ == '__main__':
-    asyncio.get_event_loop().run_until_complete(main(verbose='--verbose' in sys.argv))
-
+    asyncio.get_event_loop().run_until_complete(main())
 ```
 
 
 ### [MultiCast](https://github.com/elijahr/aiolo/blob/master/examples/multicast.py)
+
 ```python
 import asyncio
-import datetime
 import random
 
-from aiolo import MultiCast, MultiCastAddress, Route, Server, Message
+from aiolo import MultiCast, MultiCastAddress, Route, Server
 
 
 async def main():
@@ -108,16 +93,17 @@ async def main():
 
     # Send a single message from any one server to the entire cluster.
     # The message will be received by each server.
-    address.delay(datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(seconds=1), Message(foo, 'foo'))
+    address.send(foo, 'hello cluster')
 
     # Notify subscriptions to exit in 1 sec
-    address.delay(datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(seconds=2), Message(ex))
+    address.delay(1, ex)
 
     # Listen for incoming strings at /foo on any server in the cluster
-    async for route, data in foo.sub() | ex.sub():
+    subs = foo.sub() | ex.sub()
+    async for route, data in subs:
         print(f'{route} got data: {data}')
         if route == ex:
-            break
+            await subs.unsub()
 
     for server in cluster:
         server.stop()

@@ -11,7 +11,7 @@ cdef class Message:
 
 
 cdef class Bundle:
-    cdef object timetag
+    cdef public object timetag
     cdef lo.lo_bundle lo_bundle
     cdef list msgs
     cpdef object add(Bundle self, msg: types.BundleTypes)

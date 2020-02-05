@@ -52,7 +52,9 @@ cdef class FrozenTimeTag:
         free(self.lo_timetag_p)
 
     def __repr__(self):
-        return '%s(%s)' % (self.__class__.__name__, repr((self.sec, self.frac)))
+        if self == TT_IMMEDIATE:
+            return 'TT_IMMEDIATE'
+        return '%s(%s)' % (self.__class__.__name__, repr(self.dt))
 
     def __int__(self) -> int:
         return int(lo_timetag_to_osc_timestamp(self.lo_timetag))

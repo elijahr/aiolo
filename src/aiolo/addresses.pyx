@@ -1,9 +1,10 @@
 # cython: language_level=3
 
+import datetime
 from typing import Union
 
 from . import exceptions, ips, logs, protos, types
-from . cimport lo, messages, paths
+from . cimport lo, messages, paths, timetags
 
 
 __all__ = ['Address']
@@ -167,28 +168,27 @@ cdef class Address:
         message = messages.Message(route, *data)
         return self.message(message)
 
-    def delay(
-        self,
-        timetag: types.TimeTagTypes,
-        route: Union[types.RouteTypes],
-        *data: types.MessageTypes
-    ) -> int:
-        bundle = messages.Bundle(data, timetag)
-        return self._bundle(bundle)
-
     def message(self, message: messages.Message) -> int:
         if message.route.path.matches_any:
             raise ValueError('Message must be sent to a specific path or pattern')
         return self._message(message)
+
+    def delay(self, delay: Union[int, float, datetime.timedelta], route: types.RouteTypes, *args: types.MessageTypes):
+        message = messages.Message(route, *args)
+        timetag = timetags.TimeTag(datetime.datetime.now(datetime.timezone.utc))
+        timetag += delay
+        bundle = messages.Bundle(message, timetag)
+        return self._bundle(bundle)
 
     def bundle(self, bundle: types.BundleTypes, timetag: types.TimeTagTypes = None) -> int:
         if not isinstance(bundle, messages.Bundle):
             bundle = messages.Bundle(bundle, timetag)
         elif timetag is not None:
             raise ValueError('Cannot provide Bundle instance and timetag together')
-        return self._bundle(bundle)
+        count = self._bundle(bundle)
+        return count
 
-    cdef int _message(self, messages.Message message):
+    cdef int _message(self, messages.Message message) except -1:
         path = (<paths.Path>message.route.path).as_bytes
         cdef:
             int count
@@ -205,7 +205,7 @@ cdef class Address:
         IF DEBUG: logs.logger.debug('%r: sent %s bytes', self, count)
         return count
 
-    cdef int _bundle(self, messages.Bundle bundle):
+    cdef int _bundle(self, messages.Bundle bundle) except -1:
         cdef:
             int count
             lo.lo_bundle lo_bundle = (<messages.Bundle>bundle).lo_bundle

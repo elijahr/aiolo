@@ -214,7 +214,7 @@ cdef class AbstractServer:
                 self.stop(force=True)
                 raise exceptions.StartError('Could not add default method')
 
-            lo.lo_server_enable_queue(self.lo_server, self.queue_enabled, 0)
+            lo.lo_server_enable_queue(self.lo_server, self._queue_enabled, 0)
 
             lo.lo_server_set_error_context(self.lo_server, <void*>self)
             IF DEBUG: logs.logger.debug('%r: started', self)

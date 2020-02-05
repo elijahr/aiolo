@@ -1,8 +1,7 @@
 import asyncio
-import datetime
 import random
 
-from aiolo import MultiCast, MultiCastAddress, Route, Server, Message
+from aiolo import MultiCast, MultiCastAddress, Route, Server
 
 
 async def main():
@@ -27,16 +26,17 @@ async def main():
 
     # Send a single message from any one server to the entire cluster.
     # The message will be received by each server.
-    address.delay(datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(seconds=1), Message(foo, 'foo'))
+    address.send(foo, 'hello cluster')
 
     # Notify subscriptions to exit in 1 sec
-    address.delay(datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(seconds=2), Message(ex))
+    address.delay(1, ex)
 
     # Listen for incoming strings at /foo on any server in the cluster
-    async for route, data in foo.sub() | ex.sub():
+    subs = foo.sub() | ex.sub()
+    async for route, data in subs:
         print(f'{route} got data: {data}')
         if route == ex:
-            break
+            await subs.unsub()
 
     for server in cluster:
         server.stop()

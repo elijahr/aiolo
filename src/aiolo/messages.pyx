@@ -106,13 +106,12 @@ cdef class Bundle:
         self.lo_bundle = lo.lo_bundle_new((<timetags.TimeTag>timetag).lo_timetag)
         if self.lo_bundle is NULL:
             raise MemoryError
+        self.msgs = []
         if isinstance(msgs, messages.Message):
-            self.msgs = [msgs]
+            self.add_message(msgs)
         else:
-            self.msgs = []
-            if msgs:
-                for msg in msgs:
-                    self.add(msg)
+            for msg in msgs:
+                self.add(msg)
 
     def __init__(
         self,
@@ -163,7 +162,7 @@ cdef class Bundle:
         return self.add(other)
 
     def __len__(Bundle self) -> int:
-        return len((<Bundle>self).msgs)
+        return lo.lo_bundle_count(self.lo_bundle)
 
     def __iter__(Bundle self) -> Iterator:
         return iter((<Bundle>self).msgs)
