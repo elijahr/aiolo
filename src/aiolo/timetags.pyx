@@ -14,7 +14,7 @@ from . cimport lo
 
 __all__ = [
     'JAN_1970', 'FRAC_PER_SEC', 'EPOCH_UTC', 'EPOCH_OSC',
-    'FrozenTimeTag', 'TimeTag',
+    'TimeTag',
     'timetag_parts_to_unix_timestamp',
     'timetag_parts_to_osc_timestamp',
     'osc_timestamp_to_unix_timestamp',
@@ -39,7 +39,7 @@ EPOCH_UTC = datetime.datetime.fromtimestamp(0, datetime.timezone.utc)
 EPOCH_OSC = datetime.datetime(1900, 1, 1, 0, 0, 0, 0, datetime.timezone.utc)
 
 
-cdef class FrozenTimeTag:
+cdef class TimeTag:
     def __cinit__(self, timetag: types.TimeTagTypes = None):
         cdef lo.lo_timetag lo_timetag
         self.lo_timetag_p = timetag_to_lo_timetag_ptr(timetag)
@@ -55,6 +55,9 @@ cdef class FrozenTimeTag:
         if self == TT_IMMEDIATE:
             return 'TT_IMMEDIATE'
         return '%s(%s)' % (self.__class__.__name__, repr(self.dt))
+
+    def __hash__(self):
+        return hash(repr(self))
 
     def __int__(self) -> int:
         return int(lo_timetag_to_osc_timestamp(self.lo_timetag))
@@ -86,7 +89,7 @@ cdef class FrozenTimeTag:
         cdef double osc_timestamp
         if isinstance(other, tuple):
             osc_timestamp = timetag_parts_to_osc_timestamp(other[0], other[1])
-        elif isinstance(other, FrozenTimeTag):
+        elif isinstance(other, TimeTag):
             osc_timestamp = other.osc_timestamp
         elif isinstance(other, (int, float)):
             osc_timestamp = other
@@ -105,28 +108,28 @@ cdef class FrozenTimeTag:
         return operator.abs(self.osc_timestamp)
 
     def __lt__(self, other: types.TimeTagTypes) -> bool:
-        return (<FrozenTimeTag>self).compare(other, operator.lt)
+        return (<TimeTag>self).compare(other, operator.lt)
 
     def __le__(self, other: types.TimeTagTypes) -> bool:
-        return (<FrozenTimeTag>self).compare(other, operator.le)
+        return (<TimeTag>self).compare(other, operator.le)
 
     def __eq__(self, other: types.TimeTagTypes) -> bool:
-        return (<FrozenTimeTag>self).compare(other, operator.eq)
+        return (<TimeTag>self).compare(other, operator.eq)
 
     def __ne__(self, other: types.TimeTagTypes) -> bool:
-        return (<FrozenTimeTag>self).compare(other, operator.ne)
+        return (<TimeTag>self).compare(other, operator.ne)
 
     def __gt__(self, other: types.TimeTagTypes) -> bool:
-        return (<FrozenTimeTag>self).compare(other, operator.gt)
+        return (<TimeTag>self).compare(other, operator.gt)
 
     def __ge__(self, other: types.TimeTagTypes) -> bool:
-        return (<FrozenTimeTag>self).compare(other, operator.ge)
+        return (<TimeTag>self).compare(other, operator.ge)
 
     def __add__(self, other: Union[int, float, datetime.timedelta]) -> TimeTag:
-        return TimeTag((<FrozenTimeTag>self).operate(other, operator.add))
+        return TimeTag((<TimeTag>self).operate(other, operator.add))
 
     def __sub__(self, other: Union[int, float, datetime.timedelta]) -> TimeTag:
-        return TimeTag((<FrozenTimeTag>self).operate(other, operator.sub))
+        return TimeTag((<TimeTag>self).operate(other, operator.sub))
 
     __radd__ = __add__
     __rsub__ = __sub__
@@ -157,33 +160,6 @@ cdef class FrozenTimeTag:
         return self.lo_timetag.frac
 
 
-cdef class TimeTag(FrozenTimeTag):
-
-    @property
-    def sec(self) -> int:
-        return self.lo_timetag.sec
-
-    @sec.setter
-    def sec(self, value: int):
-        self.lo_timetag.sec = value
-
-    @property
-    def frac(self) -> int:
-        return self.lo_timetag.frac
-
-    @frac.setter
-    def frac(self, value: int):
-        self.lo_timetag.frac = value
-
-    def __iadd__(self, other: Union[int, float, datetime.timedelta]) -> TimeTag:
-        self.sec, self.frac = (<TimeTag>self).operate(other, operator.add)
-        return self
-
-    def __isub__(self, other: Union[int, float, datetime.timedelta]) -> TimeTag:
-        self.sec, self.frac = (<TimeTag>self).operate(other, operator.sub)
-        return self
-
-
 cdef lo.lo_timetag * timetag_to_lo_timetag_ptr(object timetag) except NULL:
     cdef:
         uint32_t sec
@@ -192,9 +168,9 @@ cdef lo.lo_timetag * timetag_to_lo_timetag_ptr(object timetag) except NULL:
 
     if timetag is None:
         # Optimization when None is passed, just copy from TT_IMMEDIATE
-        return copy_lo_timetag_ptr((<FrozenTimeTag>TT_IMMEDIATE).lo_timetag_p)
+        return copy_lo_timetag_ptr((<TimeTag>TT_IMMEDIATE).lo_timetag_p)
 
-    elif isinstance(timetag, (tuple, FrozenTimeTag)):
+    elif isinstance(timetag, (tuple, TimeTag)):
         parts = timetag
 
     elif isinstance(timetag, datetime.timedelta):
@@ -234,7 +210,7 @@ cdef lo.lo_timetag * copy_lo_timetag_ptr(lo.lo_timetag * orig) except NULL:
     return timetag_parts_to_lo_timetag_ptr(orig.sec, orig.frac)
 
 
-cdef FrozenTimeTag lo_timetag_to_timetag(lo.lo_timetag lo_timetag):
+cdef TimeTag lo_timetag_to_timetag(lo.lo_timetag lo_timetag):
     if lo_timetag.sec == 0 and lo_timetag.frac == 1:
         return TT_IMMEDIATE
     return TimeTag(lo_timetag.sec, lo_timetag.frac)
@@ -276,4 +252,4 @@ cpdef object unix_timestamp_to_timetag_parts(double unix_timestamp):
     return osc_timestamp_to_timetag_parts(unix_timestamp_to_osc_timestamp(unix_timestamp))
 
 
-TT_IMMEDIATE = FrozenTimeTag((0, 1))
+TT_IMMEDIATE = TimeTag((0, 1))

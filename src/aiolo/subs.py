@@ -79,9 +79,6 @@ class Subs:
     def __len__(self):
         return len(self._subs)
 
-    def __hash__(self):
-        return hash(repr(self))
-
     def __eq__(self, other: 'Subs') -> bool:
         if not isinstance(other, Subs):
             raise TypeError('Invalid value for Subs.__eq__: %s' % repr(other))

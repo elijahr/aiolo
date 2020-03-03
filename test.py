@@ -550,12 +550,9 @@ def test_bundle_and_message_ops():
     items.add(Message(bar, 'bar'))
     assert len(items) == 4
 
-    # Test adding a message to a bundle via __iadd__
-    orig = bundle
     bundle += Message(foo, 'foo')
     assert len(bundle) == 1
     assert bundle[0] == Message(foo, 'foo')
-    assert bundle is orig
 
     # Test adding several messages at once
     bundle += [Message(bar, 'bar'), Message(baz, 'baz')]
@@ -803,30 +800,24 @@ def test_timetag():
     tt = TT_IMMEDIATE
     assert tt is TT_IMMEDIATE
     tt += 1
-    # FrozenTimeTag does not implement __iadd__ so a new instance is created for the name tt
+    # TimeTag does not implement __iadd__ so a new instance is created for the name tt
     assert tt is not TT_IMMEDIATE
     assert tt == (1, 1)
     assert TT_IMMEDIATE == (0, 1)
 
     # Test operations
     tt = TimeTag((0, 1))
-    orig = tt
     tt = tt + 3
     assert tt == (3, 1)
-    assert tt is not orig
     tt = tt - 2.1
     assert tt == (0, .9 * FRAC_PER_SEC)
-    assert tt is not orig
 
     # Test inplace operations
     tt = TimeTag((0, 1))
-    orig = tt
     tt += 3
     assert tt == (3, 1)
-    assert tt is orig
     tt -= 2.1
     assert tt == (0, .9 * FRAC_PER_SEC)
-    assert tt is orig
 
     for dt in (
             EPOCH_UTC,

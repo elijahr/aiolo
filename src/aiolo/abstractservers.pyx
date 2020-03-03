@@ -6,7 +6,6 @@ from typing import Union, Set
 
 from cpython.ref cimport Py_INCREF, Py_DECREF
 
-
 from . import exceptions, logs, protos, routes, types
 from . cimport lo, multicasts, paths, typespecs, pack
 

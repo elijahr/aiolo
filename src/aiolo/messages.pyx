@@ -158,9 +158,6 @@ cdef class Bundle:
     def __add__(Bundle self, other: types.BundleTypes):
         return Bundle((<Bundle>self).msgs, self.timetag).add(other)
 
-    def __iadd__(Bundle self, other: types.BundleTypes):
-        return self.add(other)
-
     def __len__(Bundle self) -> int:
         return lo.lo_bundle_count(self.lo_bundle)
 
