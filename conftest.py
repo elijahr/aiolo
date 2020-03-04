@@ -15,7 +15,7 @@ import logging
 import aiolo
 
 
-CANCEL_TIMEOUT = None
+CANCEL_TIMEOUT = 5
 
 
 def pytest_addoption(parser):
