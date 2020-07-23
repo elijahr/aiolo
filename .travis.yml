@@ -78,6 +78,6 @@ install:
       esac
 
 script:
-  - pipenv run pip install uvloop netifaces pytest pytest-asyncio
+  - pipenv run pip install -U uvloop netifaces pytest pytest-asyncio
   - pipenv run python setup.py install
   - pipenv run pytest --verbose test.py
