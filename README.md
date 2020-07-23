@@ -130,6 +130,10 @@ Pull requests are welcome, please file any issues you encounter.
 
 ## Changelog
 
+### 4.1.1 (2020-07-22)
+
+* Prevent egg installation errors by passing zip_safe=False
+
 ### 4.1.0
 
 * Rectify some `__hash__` issues.
