@@ -14,7 +14,7 @@ from libc.stdint cimport \
     UINT8_MAX as _UINT8_MAX, \
     INT32_MIN as _INT32_MIN, \
     INT32_MAX as _INT32_MAX, \
-    INT64_MAX as _INT64_MIN, \
+    INT64_MIN as _INT64_MIN, \
     INT64_MAX as _INT64_MAX
 
 from libc.stdlib cimport malloc, free
@@ -28,9 +28,9 @@ __all__ = ['UINT8_MAX', 'INT32_MIN', 'INT32_MAX', 'INT64_MIN', 'INT64_MAX', 'INF
 
 
 UINT8_MAX = _UINT8_MAX
-INT32_MIN = -_INT32_MIN # Why is this not negative in the first place?
+INT32_MIN = _INT32_MIN
 INT32_MAX = _INT32_MAX
-INT64_MIN = -_INT64_MIN # Why is this not negative in the first place?
+INT64_MIN = _INT64_MIN
 INT64_MAX = _INT64_MAX
 
 TYPES_CHAR = (str, int)
