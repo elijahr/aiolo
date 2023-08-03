@@ -73,7 +73,7 @@ cdef extern from "lo/lo.h" nogil:
 
     ctypedef void* lo_server_thread
 
-    ctypedef void (*lo_err_handler)(int num, char* msg, char* where)
+    ctypedef void (*lo_err_handler)(int num, const char* msg, const char* where)
 
     ctypedef int (*lo_method_handler)(char* path, char* types, lo_arg** argv, int argc, lo_message msg, void* user_data)
 
@@ -251,8 +251,6 @@ cdef extern from "lo/lo.h" nogil:
 
     int lo_server_events_pending(lo_server s)
 
-    void lo_server_set_error_context(lo_server s, void *user_data)
-
     double lo_server_next_event_delay(lo_server s)
 
     int lo_server_max_msg_size(lo_server s, int req_size)
@@ -372,6 +370,11 @@ cdef extern from "lo/lo.h" nogil:
         int lo_servers_wait(lo_server* s, int* status, int num_servers, int timeout)
 
         int lo_servers_recv_noblock(lo_server* s, int* recvd, int num_servers, int timeout)
+
+
+cdef extern from "lo/lo_throw.h" nogil:
+
+    void lo_server_set_error_context(lo_server s, void *user_data)
 
 
 ctypedef struct lo_address_header:

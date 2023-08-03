@@ -128,7 +128,7 @@ cdef class Address:
 
     @property
     def interface(self):
-        cdef char * iface = lo.lo_address_get_iface(self.lo_address)
+        cdef const char * iface = lo.lo_address_get_iface(self.lo_address)
         if iface is NULL:
             return None
         return (<bytes>iface).decode('utf8')

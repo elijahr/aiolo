@@ -88,6 +88,3 @@ cdef class AbstractSpec:
 
     def __bool__(self):
         return bool(self.array)
-
-    def __len__(self):
-        return len(self.array)
