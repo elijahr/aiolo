@@ -50,6 +50,26 @@ def get_system_lo_version():
         return output.strip().decode('utf8') or DEFAULT_SYSTEM_LO_VERSION
 
 
+def get_system_lo_dirs():
+    include_dirs = []
+    library_dirs = []
+    try:
+        output = subprocess.check_output(['pkg-config', '--cflags-only-I', 'liblo']).decode('utf8')
+        for flag in output.split():
+            if flag.startswith('-I'):
+                include_dirs.append(flag[2:])
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        pass
+    try:
+        output = subprocess.check_output(['pkg-config', '--libs-only-L', 'liblo']).decode('utf8')
+        for flag in output.split():
+            if flag.startswith('-L'):
+                library_dirs.append(flag[2:])
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        pass
+    return include_dirs, library_dirs
+
+
 def get_cython_compile_time_env(defaults=None):
     env = dict(**defaults or {})
     env['_LO_VERSION'] = get_system_lo_version()
@@ -78,6 +98,10 @@ class build_ext(_build_ext):
             self.distribution.ext_modules,
             gdb_debug=self.debug,
             compile_time_env=compile_time_env,
+            compiler_directives={
+                'language_level': '3',
+                'annotation_typing': False,
+            },
         )
 
         super(build_ext, self).finalize_options()
@@ -147,6 +171,8 @@ setup(
             module,
             sources=[source],
             libraries=['lo'],
+            include_dirs=get_system_lo_dirs()[0],
+            library_dirs=get_system_lo_dirs()[1],
         )
         for module, source in get_pyx()
     ],

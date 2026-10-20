@@ -64,7 +64,7 @@ cdef class AbstractServer:
         url: Union[str],
         port: Union[str, int, None],
         proto: Union[str, int, None],
-        multicast: multicasts.MultiCast,
+        multicast: Union[multicasts.MultiCast, None],
     ):
         if self.running:
             raise ValueError('Cannot update server vars while server is running')
@@ -342,7 +342,7 @@ cdef int router(
     int argc,
     lo.lo_message raw_msg,
     void *_server
-) nogil except 1:
+) except 1 nogil:
     cdef int retval = 0
     cdef lo.lo_timetag lo_timetag
     with gil:

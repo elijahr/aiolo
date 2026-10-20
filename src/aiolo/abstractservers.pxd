@@ -34,4 +34,4 @@ cdef int router(
     int argc,
     lo.lo_message raw_msg,
     void *_route
-) nogil except 1
+) except 1 nogil

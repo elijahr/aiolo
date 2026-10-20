@@ -24,61 +24,61 @@ __all__ = [
 # basic OSC types
 # 32 bit signed integer.
 INT32  = 'i'
-cpdef char LO_INT32 = ord(INT32)
+cdef char LO_INT32 = ord(INT32)
 
 # 32 bit IEEE-754 float.
 FLOAT  = 'f'
-cpdef char LO_FLOAT = ord(FLOAT)
+cdef char LO_FLOAT = ord(FLOAT)
 
 # Standard C, NULL terminated string.
 STRING  = 's'
-cpdef char LO_STRING = ord(STRING)
+cdef char LO_STRING = ord(STRING)
 
 # OSC binary blob type. Accessed using the lo_blob_*() functions.
 BLOB  = 'b'
-cpdef char LO_BLOB = ord(BLOB)
+cdef char LO_BLOB = ord(BLOB)
 
 # extended OSC types
 # 64 bit signed integer.
 INT64  = 'h'
-cpdef char LO_INT64 = ord(INT64)
+cdef char LO_INT64 = ord(INT64)
 
 # OSC TimeTag type, represented by the lo_timetag structure.
 TIMETAG  = 't'
-cpdef char LO_TIMETAG = ord(TIMETAG)
+cdef char LO_TIMETAG = ord(TIMETAG)
 
 # 64 bit IEEE-754 double.
 DOUBLE  = 'd'
-cpdef char LO_DOUBLE = ord(DOUBLE)
+cdef char LO_DOUBLE = ord(DOUBLE)
 
 # Standard C, NULL terminated, string. Used in systems which
 # distinguish strings and symbols.
 SYMBOL  = 'S'
-cpdef char LO_SYMBOL = ord(SYMBOL)
+cdef char LO_SYMBOL = ord(SYMBOL)
 
 # Standard C, 8 bit, char variable.
 CHAR  = 'c'
-cpdef char LO_CHAR = ord(CHAR)
+cdef char LO_CHAR = ord(CHAR)
 
 # A 4 byte MIDI packet.
 MIDI  = 'm'
-cpdef char LO_MIDI = ord(MIDI)
+cdef char LO_MIDI = ord(MIDI)
 
 # Symbol representing the value True.
 TRUE  = 'T'
-cpdef char LO_TRUE = ord(TRUE)
+cdef char LO_TRUE = ord(TRUE)
 
 # Symbol representing the value False.
 FALSE  = 'F'
-cpdef char LO_FALSE = ord(FALSE)
+cdef char LO_FALSE = ord(FALSE)
 
 # Symbol representing the value Nil.
 NIL  = 'N'
-cpdef char LO_NIL = ord(NIL)
+cdef char LO_NIL = ord(NIL)
 
 # Symbol representing the value Infinitum.
 INFINITUM  = 'I'
-cpdef char LO_INFINITUM = ord(INFINITUM)
+cdef char LO_INFINITUM = ord(INFINITUM)
 
 
 IF not PYPY:
@@ -183,7 +183,7 @@ cdef class TypeSpec(abstractspecs.AbstractSpec):
                and self.matches_any == other.matches_any \
                and self.matches_no == other.matches_no
 
-    def __lt__(self, other: 'TypeSpec') -> bool:
+    def __lt__(self, other: TypeSpec) -> bool:
         if isinstance(other, str):
             return self.as_str < other
         elif self.matches_any:
@@ -310,7 +310,7 @@ cpdef bint flatten_args_into(object data: Iterable, list into: List) except 0:
     return True
 
 
-cpdef TypeSpec _ANY_ARGS = TypeSpec(None)
-cpdef TypeSpec _NO_ARGS = TypeSpec('')
+cdef TypeSpec _ANY_ARGS = TypeSpec(None)
+cdef TypeSpec _NO_ARGS = TypeSpec('')
 ANY_ARGS = _ANY_ARGS
 NO_ARGS = _NO_ARGS

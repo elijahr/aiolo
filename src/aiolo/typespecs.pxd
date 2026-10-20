@@ -11,36 +11,36 @@ from . import types
 from . cimport abstractspecs
 
 # 32 bit signed integer.
-cpdef char LO_INT32
+cdef char LO_INT32
 # 32 bit IEEE-754 float.
-cpdef char LO_FLOAT
+cdef char LO_FLOAT
 # Standard C, NULL terminated string.
-cpdef char LO_STRING
+cdef char LO_STRING
 # OSC binary blob type. Accessed using the lo_blob_*() functions.
-cpdef char LO_BLOB
+cdef char LO_BLOB
 
 # extended OSC types
 # 64 bit signed integer.
-cpdef char LO_INT64
+cdef char LO_INT64
 # OSC TimeTag type, represented by the lo_timetag structure.
-cpdef char LO_TIMETAG
+cdef char LO_TIMETAG
 # 64 bit IEEE-754 double.
-cpdef char LO_DOUBLE
+cdef char LO_DOUBLE
 # Standard C, NULL terminated, string. Used in systems which
 # distinguish strings and symbols.
-cpdef char LO_SYMBOL
+cdef char LO_SYMBOL
 # Standard C, 8 bit, char variable.
-cpdef char LO_CHAR
+cdef char LO_CHAR
 # A 4 byte MIDI packet.
-cpdef char LO_MIDI
+cdef char LO_MIDI
 # Symbol representing the value True.
-cpdef char LO_TRUE
+cdef char LO_TRUE
 # Symbol representing the value False.
-cpdef char LO_FALSE
+cdef char LO_FALSE
 # Symbol representing the value Nil.
-cpdef char LO_NIL
+cdef char LO_NIL
 # Symbol representing the value Infinitum.
-cpdef char LO_INFINITUM
+cdef char LO_INFINITUM
 
 IF PYPY:
     cdef object ARGTYPES
@@ -67,5 +67,5 @@ cpdef bint flatten_typespec_into(
 
 cpdef bint flatten_args_into(object data: Iterable, list into: List) except 0
 
-cpdef TypeSpec _ANY_ARGS
-cpdef TypeSpec _NO_ARGS
+cdef TypeSpec _ANY_ARGS
+cdef TypeSpec _NO_ARGS

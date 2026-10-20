@@ -7,7 +7,7 @@ import array
 
 cdef class AbstractSpec:
     IF PYPY:
-        cpdef public object array
+        cdef public object array
     ELSE:
-        cpdef public array.array array
-    cpdef public bint none
+        cdef public array.array array
+    cdef public bint none
