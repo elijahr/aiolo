@@ -120,9 +120,7 @@ For additional usage see the [examples](https://github.com/elijahr/aiolo/blob/ma
 
 ## Supported platforms
 
-Travis CI tests with the following configurations:
-* Ubuntu 18.04 Bionic Beaver + liblo 0.29 + [CPython3.6, CPython3.7, CPython3.8, PyPy7.3.0 (3.6.9)]
-* OS X + liblo 0.29 + [CPython3.6, CPython3.7, CPython3.8, PyPy7.3.0 (3.6.9)]
+Tested across Ubuntu and macOS on Python 3.10, 3.11, 3.12, and 3.13 with liblo 0.30–0.36.
 
 ## Contributing
 
@@ -130,17 +128,4 @@ Pull requests are welcome, please file any issues you encounter.
 
 ## Changelog
 
-### 4.1.1 (2020-07-22)
-
-* Prevent egg installation errors by passing zip_safe=False
-
-### 4.1.0
-
-* Rectify some `__hash__` issues.
-
-### 4.0.0
-
-* Use Python-based OSC address pattern matching rather than liblo's, supports escaped special characters
-* Ensure ThreadedServer.start() waits for thread to be initialized
-* Fix bug where subscribers might not receive pending data
-* Fix bug where loop.remove_reader() was not being called on AioServer.stop()
+See [CHANGELOG.md](CHANGELOG.md) for full release history.
