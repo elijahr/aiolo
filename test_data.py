@@ -2,7 +2,7 @@ import array
 import datetime
 
 from aiolo import FLOAT, BLOB, INT64, MIDI, Midi, INT32, CHAR, TRUE, TimeTag, INT64_MAX, INT32_MAX, NIL, INFINITY, \
-    SYMBOL, TIMETAG, INT64_MIN, STRING, EPOCH_UTC, FALSE, DOUBLE, INFINITUM, INT32_MIN
+    SYMBOL, TIMETAG, INT64_MIN, STRING, EPOCH_UTC, FALSE, DOUBLE, INFINITUM, INT32_MIN, LO_VERSION
 
 
 class ArgdefTestData:
@@ -101,7 +101,14 @@ class BlobTestData(ArgdefTestData):
         [b'123', array.array('b', b'123')],
         [array.array('b', b'***'), array.array('b', b'***')],
     ]
-    value_error = [b'', array.array('b')]
+    if LO_VERSION >= "0.32":
+        valid.extend([
+            [b'', array.array('b')],
+            [array.array('b'), array.array('b')],
+        ])
+        value_error = []
+    else:
+        value_error = [b'', array.array('b')]
     type_error = [42, 42.0, 'foo']
 
 

@@ -371,6 +371,30 @@ cdef extern from "lo/lo.h" nogil:
 
         int lo_servers_recv_noblock(lo_server* s, int* recvd, int num_servers, int timeout)
 
+    IF _LO_VERSION >= "0.32":
+
+        cdef struct _lo_server_config:
+            size_t size
+            const char *group
+            const char *port
+            const char *iface
+            const char *ip
+            int proto
+            lo_err_handler err_handler
+            void *err_handler_context
+
+        ctypedef _lo_server_config lo_server_config
+
+        lo_server lo_server_new_from_config(lo_server_config *config)
+
+        lo_server_thread lo_server_thread_new_from_config(lo_server_config *config)
+
+    IF _LO_VERSION >= "0.35":
+
+        void lo_bundle_clear(lo_bundle b)
+
+        void lo_bundle_set_timestamp(lo_bundle b, lo_timetag t)
+
 
 cdef extern from "lo/lo_throw.h" nogil:
 

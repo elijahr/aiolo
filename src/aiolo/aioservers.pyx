@@ -4,6 +4,9 @@ import asyncio
 import socket
 from typing import Union
 
+from libc.stdlib cimport malloc, free
+from libc.string cimport memset
+
 from . import exceptions, logs
 from . cimport lo, multicasts
 
@@ -11,7 +14,7 @@ from . cimport lo, multicasts
 from .abstractservers cimport on_error, pop_server_start_error, AbstractServer, NO_IFACE, NO_IP
 
 
-__all__ = ['AioServer', 'Server']
+__all__ = ['AioServer', 'Server', 'servers_recv_noblock', 'servers_wait']
 
 
 cdef class AioServer(AbstractServer):
@@ -38,7 +41,33 @@ cdef class AioServer(AbstractServer):
             char * ip
             multicasts.MultiCast multicast
             lo.lo_server lo_server = NULL
-        if self._url:
+        IF _LO_VERSION >= "0.32":
+            cdef lo.lo_server_config scfg
+            cdef bytes b_grp, b_prt, b_ifc, b_ip
+            if self._config is not None and not self._url:
+                memset(&scfg, 0, sizeof(lo.lo_server_config))
+                scfg.size = sizeof(lo.lo_server_config)
+                scfg.err_handler = on_error
+                scfg.proto = self._proto
+                if self._port is not None:
+                    b_prt = self._port.encode('utf8')
+                    scfg.port = b_prt
+                if self._multicast:
+                    multicast = <multicasts.MultiCast>self._multicast
+                    if multicast._group:
+                        b_grp = multicast._group.encode('utf8')
+                        scfg.group = b_grp
+                    if multicast._iface:
+                        b_ifc = multicast._iface.encode('utf8')
+                        scfg.iface = b_ifc
+                    if multicast._ip:
+                        b_ip = multicast._ip.encode('utf8')
+                        scfg.ip = b_ip
+                lo_server = lo.lo_server_new_from_config(&scfg)
+
+        if lo_server != NULL:
+            pass
+        elif self._url:
             burl = self._url.encode('utf8')
             lo_server = lo.lo_server_new_from_url(burl, on_error)
         elif self._multicast:
@@ -133,3 +162,98 @@ cdef class AioServer(AbstractServer):
 
 # Server is an alias for AioServer
 Server = AioServer
+
+
+def servers_recv_noblock(servers, int timeout=0) -> dict:
+    """Look for OSC messages waiting to be received across multiple servers.
+
+    Dispatches any incoming messages to matching routes on their respective servers.
+
+    :param servers: An iterable of AioServer instances.
+    :param timeout: Timeout in milliseconds to wait (0 returns immediately).
+    :return: A dictionary mapping {server: bytes_received} for each server that received data.
+    """
+    IF _LO_VERSION < "0.30":
+        raise NotImplementedError("Multi-server receive requires liblo >= 0.30")
+    ELSE:
+        cdef list s_list = list(servers)
+        cdef int n = len(s_list)
+        if n == 0:
+            return {}
+
+        cdef lo.lo_server *lo_servers = <lo.lo_server*>malloc(n * sizeof(lo.lo_server))
+        cdef int *recvd = <int*>malloc(n * sizeof(int))
+        if lo_servers == NULL or recvd == NULL:
+            if lo_servers != NULL: free(lo_servers)
+            if recvd != NULL: free(recvd)
+            raise MemoryError
+
+        cdef int i
+        cdef AioServer s
+        for i in range(n):
+            s = <AioServer>s_list[i]
+            if s.lo_server == NULL:
+                free(lo_servers)
+                free(recvd)
+                raise ValueError("Server %r is not running" % s)
+            lo_servers[i] = s.lo_server
+            recvd[i] = 0
+
+        cdef int total = 0
+        with nogil:
+            total = lo.lo_servers_recv_noblock(lo_servers, recvd, n, timeout)
+
+        result = {}
+        for i in range(n):
+            if recvd[i] > 0:
+                result[s_list[i]] = recvd[i]
+
+        free(lo_servers)
+        free(recvd)
+        return result
+
+
+def servers_wait(servers, int timeout=0) -> list:
+    """Wait for data across multiple servers.
+
+    :param servers: An iterable of AioServer instances.
+    :param timeout: Timeout in milliseconds (0 returns immediately).
+    :return: A list of servers that have data ready.
+    """
+    IF _LO_VERSION < "0.30":
+        raise NotImplementedError("Multi-server wait requires liblo >= 0.30")
+    ELSE:
+        cdef list s_list = list(servers)
+        cdef int n = len(s_list)
+        if n == 0:
+            return []
+
+        cdef lo.lo_server *lo_servers = <lo.lo_server*>malloc(n * sizeof(lo.lo_server))
+        cdef int *status = <int*>malloc(n * sizeof(int))
+        if lo_servers == NULL or status == NULL:
+            if lo_servers != NULL: free(lo_servers)
+            if status != NULL: free(status)
+            raise MemoryError
+
+        cdef int i
+        cdef AioServer s
+        for i in range(n):
+            s = <AioServer>s_list[i]
+            if s.lo_server == NULL:
+                free(lo_servers)
+                free(status)
+                raise ValueError("Server %r is not running" % s)
+            lo_servers[i] = s.lo_server
+            status[i] = 0
+
+        with nogil:
+            lo.lo_servers_wait(lo_servers, status, n, timeout)
+
+        result = []
+        for i in range(n):
+            if status[i] > 0:
+                result.append(s_list[i])
+
+        free(lo_servers)
+        free(status)
+        return result

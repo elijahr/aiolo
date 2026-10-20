@@ -125,14 +125,18 @@ cdef list unpack_args(typespecs.TypeSpec typespec, lo.lo_arg ** argv, int argc):
             blobsize = lo.lo_blob_datasize(<lo.lo_blob>&(arg.blob))
             IF PYPY:
                 blob = array.array('b')
-                raw_blob = malloc(blobsize)
-                memcpy(raw_blob, lo.lo_blob_dataptr(<lo.lo_blob>&(arg.blob)), blobsize)
-                for j in range(blobsize):
-                    blob.append((<char*>raw_blob)[j])
-                free(raw_blob)
+                if blobsize > 0:
+                    raw_blob = malloc(blobsize)
+                    memcpy(raw_blob, lo.lo_blob_dataptr(<lo.lo_blob>&(arg.blob)), blobsize)
+                    for j in range(blobsize):
+                        blob.append((<char*>raw_blob)[j])
+                    free(raw_blob)
             ELSE:
                 blob = array.clone(BLOB_ARRAY_TEMPLATE, blobsize, zero=True)
-                memcpy(<void*>blob.data.as_voidptr, lo.lo_blob_dataptr(<lo.lo_blob>&(arg.blob)), blobsize)
+                if blobsize > 0:
+                    raw_blob = lo.lo_blob_dataptr(<lo.lo_blob>&(arg.blob))
+                    if raw_blob != NULL:
+                        memcpy(<void*>blob.data.as_voidptr, raw_blob, blobsize)
             data.append(blob)
         elif typespec_array[i] == typespecs.LO_INT64:
             data.append(arg.i64)
@@ -262,9 +266,13 @@ cdef lo.lo_message pack_lo_message(typespecs.TypeSpec typespec, object args: Ite
                 charg = <char*>byarg
             else:
                 raise TypeError('Invalid type for BLOB: %s' % (repr(arg)))
-            if not size:
-                raise ValueError('Invalid value for BLOB: %s (must have length >= 1)' % repr(arg))
-            lo_blob = lo.lo_blob_new(size, <void*>charg)
+            IF _LO_VERSION < "0.32":
+                if not size:
+                    raise ValueError('Invalid value for BLOB: %s (must have length >= 1 in liblo < 0.32)' % repr(arg))
+            ELSE:
+                if size < 0:
+                    raise ValueError('Invalid value for BLOB: %s (length cannot be negative)' % repr(arg))
+            lo_blob = lo.lo_blob_new(size, <void*>charg if size > 0 else NULL)
             if lo_blob is NULL:
                 raise MemoryError
             if lo.lo_message_add_blob(lo_message, lo_blob) != 0:

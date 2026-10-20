@@ -27,14 +27,32 @@ cdef class AbstractServer:
         port: Union[str, int, None] = None,
         proto: Union[str, int, None] = None,
         multicast: Union[multicasts.MultiCast, None] = None,
+        config: Union[types.ServerConfig, dict, None] = None,
         **kwargs,
     ):
+        if config is not None:
+            if hasattr(config, "port"):
+                if port is None and config.port is not None:
+                    port = config.port
+                if proto is None and config.proto is not None:
+                    proto = config.proto
+                if multicast is None and (config.group or config.iface or config.ip):
+                    multicast = multicasts.MultiCast(port=port, group=config.group or '224.0.0.1', iface=config.iface, ip=config.ip)
+            elif isinstance(config, dict):
+                if port is None and config.get("port") is not None:
+                    port = config.get("port")
+                if proto is None and config.get("proto") is not None:
+                    proto = config.get("proto")
+                if multicast is None and (config.get("group") or config.get("iface") or config.get("ip")):
+                    multicast = multicasts.MultiCast(port=port, group=config.get("group") or '224.0.0.1', iface=config.get("iface"), ip=config.get("ip"))
+
         url, port, proto, multicast = self._validate(url, port, proto, multicast)
 
         self._url = url
         self._port = port
         self._proto = proto
         self._multicast = multicast
+        self._config = config
         self._queue_enabled = True # default is on
         self.routing = {}
         self.startstoplock = threading.RLock()
@@ -46,9 +64,14 @@ cdef class AbstractServer:
         port: Union[str, int, None] = None,
         proto: Union[str, int, None] = None,
         multicast: Union[multicasts.MultiCast, None] = None,
+        config: Union[types.ServerConfig, dict, None] = None,
         **kwargs,
     ):
         pass
+
+    @property
+    def config(self):
+        return self._config
 
     def __repr__(self):
         if self._url:
