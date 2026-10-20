@@ -1,12 +1,23 @@
 import array
 import datetime
-from typing import Type, Union, TYPE_CHECKING, Iterable, Tuple, List, Callable
+from dataclasses import dataclass
+from typing import Type, Union, TYPE_CHECKING, Iterable, Tuple, List, Callable, Optional
 
 if TYPE_CHECKING:
     from . import messages, midis, paths, routes, timetags, typespecs
 
 
-__all__ = ['TypeSpecTypes', 'BundleTypes', 'PathTypes', 'RouteTypes', 'MessageTypes', 'PubTypes', 'TimeTagTypes']
+__all__ = ['TypeSpecTypes', 'BundleTypes', 'PathTypes', 'RouteTypes', 'MessageTypes', 'PubTypes', 'TimeTagTypes', 'ServerConfig']
+
+
+@dataclass
+class ServerConfig:
+    """Configuration options for initializing a liblo server."""
+    port: Optional[Union[str, int]] = None
+    proto: Optional[Union[str, int]] = None
+    group: Optional[str] = None
+    iface: Optional[str] = None
+    ip: Optional[str] = None
 
 
 # Types that can be used to construct an TypeSpec, which defines the types and order of argument accepted by a Route

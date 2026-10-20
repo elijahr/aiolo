@@ -10,10 +10,10 @@ import array
 
 
 from . import patterns, types
-from . cimport abstractspecs
+from . cimport abstractspecs, lo
 
 
-__all__ = ['Path', 'ANY_PATH']
+__all__ = ['Path', 'ANY_PATH', 'pattern_match']
 
 
 IF not PYPY:
@@ -102,3 +102,17 @@ cdef class Path(abstractspecs.AbstractSpec):
 
 cdef Path _ANY_PATH = Path(None)
 ANY_PATH = _ANY_PATH
+
+
+def pattern_match(str target, str pattern) -> bool:
+    """Match an OSC address string against an OSC pattern using liblo's native pattern matcher.
+
+    :param target: Concrete OSC address (e.g. "/foo/bar")
+    :param pattern: OSC pattern with wildcards (e.g. "/foo/*", "/foo/{bar,baz}", "//test")
+    :return: True if pattern matches target, False otherwise
+    """
+    cdef bytes b_target = target.encode('utf8')
+    cdef bytes b_pattern = pattern.encode('utf8')
+    cdef char* c_target = b_target
+    cdef char* c_pattern = b_pattern
+    return bool(lo.lo_pattern_match(c_target, c_pattern))

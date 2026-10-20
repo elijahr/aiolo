@@ -220,3 +220,24 @@ cdef class Bundle:
             raise MemoryError
         self.msgs.append(bundle)
         return None
+
+    cpdef object clear(Bundle self):
+        """Clear all messages and nested bundles from this bundle."""
+        IF _LO_VERSION >= "0.35":
+            lo.lo_bundle_clear(self.lo_bundle)
+        ELSE:
+            lo.lo_bundle_free(self.lo_bundle)
+            self.lo_bundle = lo.lo_bundle_new((<timetags.TimeTag>self.timetag).lo_timetag)
+            if self.lo_bundle is NULL:
+                raise MemoryError
+        self.msgs.clear()
+        return self
+
+    cpdef object set_timetag(Bundle self, object timetag):
+        """Update the bundle's timestamp."""
+        if not isinstance(timetag, timetags.TimeTag):
+            timetag = timetags.TimeTag(timetag)
+        self.timetag = timetag
+        IF _LO_VERSION >= "0.35":
+            lo.lo_bundle_set_timestamp(self.lo_bundle, (<timetags.TimeTag>timetag).lo_timetag)
+        return self

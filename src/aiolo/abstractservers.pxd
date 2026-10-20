@@ -13,6 +13,7 @@ cdef class AbstractServer:
     cdef str _port
     cdef int _proto
     cdef multicasts.MultiCast _multicast
+    cdef object _config
     cdef bint _queue_enabled
     cdef dict routing
     cdef object startstoplock

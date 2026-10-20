@@ -9,6 +9,7 @@ from cpython.ref cimport Py_INCREF, Py_DECREF
 cimport cython.parallel
 
 
+from libc.string cimport memset
 from . import  exceptions, logs
 from . cimport lo, multicasts
 
@@ -56,7 +57,33 @@ cdef class ThreadedServer(AbstractServer):
             multicasts.MultiCast multicast
             lo.lo_server_thread lo_server_thread = NULL
 
-        if self._url:
+        IF _LO_VERSION >= "0.32":
+            cdef lo.lo_server_config scfg
+            cdef bytes b_grp, b_prt, b_ifc, b_ip
+            if self._config is not None and not self._url:
+                memset(&scfg, 0, sizeof(lo.lo_server_config))
+                scfg.size = sizeof(lo.lo_server_config)
+                scfg.err_handler = on_error
+                scfg.proto = self._proto
+                if self._port is not None:
+                    b_prt = self._port.encode('utf8')
+                    scfg.port = b_prt
+                if self._multicast:
+                    multicast = <multicasts.MultiCast>self._multicast
+                    if multicast._group:
+                        b_grp = multicast._group.encode('utf8')
+                        scfg.group = b_grp
+                    if multicast._iface:
+                        b_ifc = multicast._iface.encode('utf8')
+                        scfg.iface = b_ifc
+                    if multicast._ip:
+                        b_ip = multicast._ip.encode('utf8')
+                        scfg.ip = b_ip
+                lo_server_thread = lo.lo_server_thread_new_from_config(&scfg)
+
+        if lo_server_thread != NULL:
+            pass
+        elif self._url:
             burl = self._url.encode('utf8')
             lo_server_thread = lo.lo_server_thread_new_from_url(burl, on_error)
         elif self._multicast:

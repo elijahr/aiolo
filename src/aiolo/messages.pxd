@@ -17,3 +17,5 @@ cdef class Bundle:
     cpdef object add(Bundle self, msg: types.BundleTypes)
     cpdef object add_message(Bundle self, messages.Message message)
     cpdef object add_bundle(Bundle self, Bundle bundle)
+    cpdef object clear(Bundle self)
+    cpdef object set_timetag(Bundle self, object timetag)
