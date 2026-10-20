@@ -85,7 +85,7 @@ cdef class AioServer(AbstractServer):
         # Create a Python socket reference for the server's existing socket fd
         # and poll for read events on the event loop
         self.sock = socket.socket(fileno=lo.lo_server_get_socket_fd(self.lo_server))
-        asyncio.get_event_loop().add_reader(self.sock, self._on_sock_readable, self)
+        asyncio.get_event_loop().add_reader(self.sock, self._on_sock_readable)
         IF DEBUG: logs.logger.debug('%r: started, polling on loop', self)
 
     cdef int lo_server_stop(self) except -1:
@@ -124,7 +124,7 @@ cdef class AioServer(AbstractServer):
                     IF DEBUG: logs.logger.debug('%r: pending server events, will check in %ss', self, delay)
                     # I am verklempt that passing a cdef void function to call_later actually works,
                     # but it does! I'll just go with it because it is faster.
-                    asyncio.get_event_loop().call_later(delay, self._on_sock_readable, self)
+                    asyncio.get_event_loop().call_later(delay, self._on_sock_readable)
             else:
                 IF DEBUG:
                     with gil:

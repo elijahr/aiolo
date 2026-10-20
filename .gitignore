@@ -12,3 +12,7 @@ test.log
 cython_debug
 __pycache__
 *.pyc
+*.so
+*.dylib
+.venv/
+.pytest_cache/
