@@ -15,6 +15,7 @@ from aiolo import (
     pattern_match,
     servers_recv_noblock,
     servers_wait,
+    LO_VERSION,
 )
 
 
@@ -60,6 +61,12 @@ async def test_bundle_set_timetag():
 @pytest.mark.asyncio
 async def test_zero_length_blob():
     port = get_free_port()
+    if LO_VERSION < "0.32":
+        addr = Address(port=port)
+        with pytest.raises(ValueError, match="must have length >= 1 in liblo < 0.32"):
+            addr.send("/empty_blob", b"")
+        return
+
     server = AioServer(port=port)
     route = server.route("/empty_blob", array.array)
     sub = route.sub()
