@@ -7,7 +7,6 @@ import sys
 
 from setuptools import setup, Extension
 from setuptools.command.build_ext import build_ext as _build_ext
-from setuptools.command.install import install as _install
 
 
 try:
@@ -86,45 +85,29 @@ class build_ext(_build_ext):
 
     def finalize_options(self):
         from Cython.Build.Dependencies import cythonize
-        for item in itertools.chain(
-                glob.glob(os.path.join(DIR, 'src', 'aiolo', '*.c')),
-                glob.glob(os.path.join(DIR, 'src', 'aiolo', '*.h'))):
-            os.remove(item)
 
         compile_time_env = get_cython_compile_time_env(
             defaults=dict(DEBUG=self.debug))
 
-        self.distribution.ext_modules[:] = cythonize(
-            self.distribution.ext_modules,
-            gdb_debug=self.debug,
-            compile_time_env=compile_time_env,
-            compiler_directives={
-                'language_level': '3',
-                'annotation_typing': False,
-            },
+        # Only cythonize if .pyx files are still present in ext_modules sources
+        needs_cythonize = any(
+            any(s.endswith(('.pyx', '.py')) for s in ext.sources)
+            for ext in (self.distribution.ext_modules or [])
         )
+        if needs_cythonize:
+            self.distribution.ext_modules[:] = cythonize(
+                self.distribution.ext_modules,
+                gdb_debug=self.debug,
+                compile_time_env=compile_time_env,
+                compiler_directives={
+                    'language_level': '3',
+                    'annotation_typing': False,
+                },
+            )
 
         super(build_ext, self).finalize_options()
-
-        # Never install as an egg
-        self.single_version_externally_managed = False
-
-
-class install(_install):
-    user_options = _install.user_options + [
-        ('debug', None, 'Build with debug symbols'),
-    ]
-
-    def initialize_options(self):
-        super(install, self).initialize_options()
-        self.debug = '--debug' in sys.argv
-
-    def finalize_options(self):
-        super(install, self).finalize_options()
-        # Never install as an egg
-        self.single_version_externally_managed = False
-
-
+ 
+ 
 about = {}
 with open(os.path.join(DIR, 'src', 'aiolo', '__version__.py'), 'r') as f:
     exec(f.read(), about)
@@ -150,11 +133,11 @@ setup(
     url=about['__url__'],
     author=about['__author__'],
     author_email=about['__author_email__'],
+    python_requires=">=3.10",
     packages=['aiolo'],
     package_dir={
       'aiolo': os.path.join('src', 'aiolo'),
     },
-    data_files=['README.md', 'LICENSE'],
     package_data={
         'aiolo': [
             # Include cython source
@@ -164,7 +147,6 @@ setup(
     },
     cmdclass={
         'build_ext': build_ext,
-        'install': install
     },
     ext_modules=[
         Extension(
@@ -176,7 +158,6 @@ setup(
         )
         for module, source in get_pyx()
     ],
-    setup_requires=['cython'],
     extras_require={
         'examples': [
             'pyaudio',

@@ -1,7 +1,11 @@
 # aiolo
-asyncio-friendly Python bindings for [liblo](http://liblo.sourceforge.net/), an implementation of the Open Sound Control (OSC) protocol for POSIX systems.
 
-![build_status](https://travis-ci.org/elijahr/aiolo.svg?branch=master)
+[![CI](https://github.com/elijahr/aiolo/actions/workflows/ci.yml/badge.svg)](https://github.com/elijahr/aiolo/actions/workflows/ci.yml)
+[![PyPI version](https://img.shields.io/pypi/v/aiolo.svg)](https://pypi.org/project/aiolo/)
+[![Python versions](https://img.shields.io/pypi/pyversions/aiolo.svg)](https://pypi.org/project/aiolo/)
+[![License](https://img.shields.io/badge/License-BSD_3--Clause-blue.svg)](https://opensource.org/licenses/BSD-3-Clause)
+
+asyncio-friendly Python bindings for [liblo](http://liblo.sourceforge.net/), an implementation of the Open Sound Control (OSC) protocol for POSIX systems.
 
 ## Installation
 

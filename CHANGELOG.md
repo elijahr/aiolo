@@ -23,6 +23,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Full compatibility with Cython 3.0+ (resolved bound method callback wrapper arity in `AioServer`).
   - Automatic `pkg-config` discovery for `liblo` include and library paths in `setup.py`.
   - Modernized Cython directives and type specifications.
+- **Packaging & CI Modernization**:
+  - Added PEP 517 `pyproject.toml` with `setuptools.build_meta` build system.
+  - Added `MANIFEST.in` to ensure all Cython sources and package metadata are included in sdists.
+  - Modernized `setup.py`: removed legacy egg-era install hooks and redundant setup requirements.
+  - Added PyPI Trusted Publishing OIDC GitHub Actions workflow (`release.yml`).
+  - Modernized `README.md` badges (CI, PyPI version, Python versions, and License).
 
 ## [4.1.1] - 2020-07-22
 
