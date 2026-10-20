@@ -46,8 +46,10 @@ __all__ = \
     + threadedservers.__all__ \
     + timetags.__all__ \
     + types.__all__ \
-    + typespecs.__all__
+    + typespecs.__all__ \
+    + ['__version__']
 
+from .__version__ import __version__
 from .aioservers import *
 from .addresses import *
 from .abstractservers import *

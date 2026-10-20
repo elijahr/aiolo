@@ -1,0 +1,3 @@
+include LICENSE README.md CHANGELOG.md pyproject.toml pytest.ini
+recursive-include src/aiolo *.pyx *.pxd *.c *.h *.py
+recursive-include examples *.py
